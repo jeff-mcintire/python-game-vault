@@ -1,20 +1,27 @@
 """
 agent.py — The core RPG agent.
 
-Uses Claude's tool-use API to execute vault operations in a loop until
-Claude decides it has finished the task.  Claude calls tools like
-create_file / update_file / append_to_file; this module executes them
-against the real filesystem, then feeds results back to Claude.
+Supports two execution modes:
+
+  dry_run=True  (default for /chat)
+    All write operations are captured in a StagingArea instead of
+    being committed to disk.  Reads are served transparently from
+    staging-then-vault so the agent can reference files it just
+    proposed to create.  Returns the StagingArea for user review.
+
+  dry_run=False
+    Write operations go directly to the vault (used internally by
+    /review/{id}/confirm after the user approves).
 """
 
 import logging
-from pathlib import Path
 from typing import Optional
 
 import anthropic
 
-from vault import VaultManager
 from embeddings import VaultIndex
+from staging import StagingArea
+from vault import VaultManager
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +72,7 @@ IMPORTANT RULES
 
 
 # ---------------------------------------------------------------------------
-# Tool definitions (passed to Claude)
+# Tool definitions
 # ---------------------------------------------------------------------------
 
 TOOLS: list[dict] = [
@@ -103,18 +110,9 @@ TOOLS: list[dict] = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "relative_path": {
-                    "type": "string",
-                    "description": "Path relative to vault root.",
-                },
-                "content": {
-                    "type": "string",
-                    "description": "New full markdown body.",
-                },
-                "frontmatter": {
-                    "type": "object",
-                    "description": "Updated frontmatter dict.",
-                },
+                "relative_path": {"type": "string"},
+                "content": {"type": "string"},
+                "frontmatter": {"type": "object"},
             },
             "required": ["relative_path", "content"],
         },
@@ -128,16 +126,24 @@ TOOLS: list[dict] = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "relative_path": {
-                    "type": "string",
-                    "description": "Path relative to vault root.",
-                },
-                "content": {
-                    "type": "string",
-                    "description": "Markdown content to append.",
-                },
+                "relative_path": {"type": "string"},
+                "content": {"type": "string"},
             },
             "required": ["relative_path", "content"],
+        },
+    },
+    {
+        "name": "delete_file",
+        "description": (
+            "Delete a file from the vault. "
+            "Only use when the user has explicitly requested deletion."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "relative_path": {"type": "string"},
+            },
+            "required": ["relative_path"],
         },
     },
     {
@@ -149,10 +155,7 @@ TOOLS: list[dict] = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "relative_path": {
-                    "type": "string",
-                    "description": "Path relative to vault root.",
-                },
+                "relative_path": {"type": "string"},
             },
             "required": ["relative_path"],
         },
@@ -174,23 +177,27 @@ class RPGAgent:
     # Public entry point
     # ------------------------------------------------------------------
 
-    def run(self, prompt: str, top_k: int = 10) -> dict:
+    def run(
+        self,
+        prompt: str,
+        top_k: int = 10,
+        staging: Optional[StagingArea] = None,
+    ) -> dict:
         """
         Execute an agent loop for the given prompt.
 
-        Returns:
-          {
-            "response": str,
-            "files_referenced": [str, ...],
-            "files_modified": [str, ...],
-            "operations_performed": [{"operation": ..., "path": ...}, ...]
-          }
+        Args:
+            prompt:  Natural-language request.
+            top_k:   Number of relevant files to pull into context.
+            staging: If provided, all write operations are captured here
+                     instead of being committed to disk (dry-run mode).
+                     If None, writes go directly to the vault.
         """
-        # 1. Semantic search → relevant files
+        dry_run = staging is not None
+
         relevant_files = self.index.search(prompt, top_k=top_k)
         context = self._build_context(relevant_files)
 
-        # 2. Initial message
         messages: list[dict] = [
             {
                 "role": "user",
@@ -203,7 +210,6 @@ class RPGAgent:
         operations: list[dict] = []
         final_response = ""
 
-        # 3. Agentic tool-use loop
         while True:
             response = self.client.messages.create(
                 model="claude-opus-4-5",
@@ -213,7 +219,6 @@ class RPGAgent:
                 messages=messages,
             )
 
-            # Collect text + tool calls from this turn
             tool_calls = []
             for block in response.content:
                 if block.type == "text":
@@ -221,29 +226,24 @@ class RPGAgent:
                 elif block.type == "tool_use":
                     tool_calls.append(block)
 
-            # No tool calls or natural end → done
             if not tool_calls or response.stop_reason == "end_turn":
                 break
 
-            # 4. Execute each tool call
             tool_results = []
             for tc in tool_calls:
-                result_text, meta = self._execute_tool(tc.name, tc.input)
+                result_text, meta = self._execute_tool(
+                    tc.name, tc.input, staging=staging, dry_run=dry_run
+                )
                 tool_results.append(
-                    {
-                        "type": "tool_result",
-                        "tool_use_id": tc.id,
-                        "content": result_text,
-                    }
+                    {"type": "tool_result", "tool_use_id": tc.id, "content": result_text}
                 )
                 operations.append(meta)
                 op = meta.get("operation", "")
                 path = meta.get("path")
-                if op in ("create", "update", "append") and path:
+                if op in ("create", "update", "append", "delete") and path:
                     if path not in files_modified:
                         files_modified.append(path)
 
-            # 5. Feed results back for next turn
             messages.append({"role": "assistant", "content": response.content})
             messages.append({"role": "user", "content": tool_results})
 
@@ -275,52 +275,70 @@ class RPGAgent:
     # Tool execution
     # ------------------------------------------------------------------
 
-    def _execute_tool(self, tool_name: str, tool_input: dict) -> tuple[str, dict]:
-        """Run a single tool call.  Returns (result_text, metadata_dict)."""
+    def _execute_tool(
+        self,
+        tool_name: str,
+        tool_input: dict,
+        staging: Optional[StagingArea],
+        dry_run: bool,
+    ) -> tuple[str, dict]:
+        label = "[staged]" if dry_run else "[live]"
         try:
-            if tool_name == "create_file":
-                path = self.vault.write_file(
-                    tool_input["relative_path"],
-                    tool_input["content"],
-                    tool_input.get("frontmatter"),
-                )
-                self._reindex_file(path)
-                return f"✓ Created {path}", {"operation": "create", "path": path}
-
-            elif tool_name == "update_file":
-                path = self.vault.write_file(
-                    tool_input["relative_path"],
-                    tool_input["content"],
-                    tool_input.get("frontmatter"),
-                )
-                self._reindex_file(path)
-                return f"✓ Updated {path}", {"operation": "update", "path": path}
+            if tool_name in ("create_file", "update_file"):
+                if dry_run:
+                    path = staging.stage_write(
+                        self.vault,
+                        tool_input["relative_path"],
+                        tool_input["content"],
+                        tool_input.get("frontmatter"),
+                    )
+                    op = staging._changes[path].operation
+                else:
+                    path = self.vault.write_file(
+                        tool_input["relative_path"],
+                        tool_input["content"],
+                        tool_input.get("frontmatter"),
+                    )
+                    op = "update" if tool_name == "update_file" else "create"
+                    self._reindex_file(path)
+                return f"✓ {label} {op}d {path}", {"operation": op, "path": path}
 
             elif tool_name == "append_to_file":
-                path = self.vault.append_file(
-                    tool_input["relative_path"],
-                    tool_input["content"],
-                )
-                self._reindex_file(path)
-                return f"✓ Appended to {path}", {"operation": "append", "path": path}
+                if dry_run:
+                    path = staging.stage_append(
+                        self.vault, tool_input["relative_path"], tool_input["content"]
+                    )
+                else:
+                    path = self.vault.append_file(
+                        tool_input["relative_path"], tool_input["content"]
+                    )
+                    self._reindex_file(path)
+                return f"✓ {label} appended to {path}", {"operation": "append", "path": path}
+
+            elif tool_name == "delete_file":
+                if dry_run:
+                    path = staging.stage_delete(self.vault, tool_input["relative_path"])
+                else:
+                    path = self.vault.delete_file(tool_input["relative_path"])
+                return f"✓ {label} deleted {path}", {"operation": "delete", "path": path}
 
             elif tool_name == "read_file":
                 rel = tool_input["relative_path"]
-                content = self.vault.read_relative(rel)
+                content = (
+                    staging.read(self.vault, rel)
+                    if dry_run and staging
+                    else self.vault.read_relative(rel)
+                )
                 return content, {"operation": "read", "path": rel}
 
             else:
-                return f"Unknown tool: {tool_name}", {
-                    "operation": "error",
-                    "tool": tool_name,
-                }
+                return f"Unknown tool: {tool_name}", {"operation": "error", "tool": tool_name}
 
         except Exception as e:
             logger.error(f"Tool '{tool_name}' failed: {e}", exc_info=True)
             return f"Error: {e}", {"operation": "error", "tool": tool_name}
 
     def _reindex_file(self, relative_path: str) -> None:
-        """Update the embedding index after a write."""
         try:
             full_text = self.vault.read_relative(relative_path)
             self.index.update_file(relative_path, full_text)

@@ -67,32 +67,81 @@ On first start the server will build the embedding index for your vault
 
 ## API Reference
 
-### `POST /chat`
+All write operations follow a **stage → review → confirm** workflow.
+Nothing touches the vault until you explicitly confirm.
 
-Send a natural-language prompt to the agent.
+---
+
+### `POST /chat` — Stage changes
+
+Send a natural-language prompt. The agent runs fully but **nothing is written to disk yet**.
 
 ```json
-{
-  "prompt": "Create a new NPC blacksmith named Aldric who works at the Iron Forge in Stormhaven",
-  "top_k": 10
-}
+{ "prompt": "Create a new NPC blacksmith named Aldric at the Iron Forge", "top_k": 10 }
 ```
 
-`top_k` controls how many semantically relevant files are pulled into
-Claude's context window per request (default 10, max ~20 recommended).
-
-**Response:**
+**Response** (`PendingReview`):
 ```json
 {
-  "response": "Created Aldric Ironhand, blacksmith at the Iron Forge...",
+  "session_id": "a1b2c3d4-...",
+  "agent_response": "I'll create Aldric Ironhand and update the Iron Forge...",
   "files_referenced": ["Locations/Stormhaven/Shops/Iron Forge.md"],
-  "files_modified": ["NPCs/Aldric Ironhand.md", "Locations/Stormhaven/Shops/Iron Forge.md"],
-  "operations_performed": [
-    {"operation": "create", "path": "NPCs/Aldric Ironhand.md"},
-    {"operation": "update", "path": "Locations/Stormhaven/Shops/Iron Forge.md"}
-  ]
+  "changes": [
+    {
+      "operation": "create",
+      "relative_path": "NPCs/Aldric Ironhand.md",
+      "proposed_content": "---\ntags: [npc]\n---\n## Aldric Ironhand\n...",
+      "original_content": null,
+      "diff": "--- a/NPCs/Aldric Ironhand.md\n+++ b/NPCs/Aldric Ironhand.md\n..."
+    },
+    {
+      "operation": "update",
+      "relative_path": "Locations/Stormhaven/Shops/Iron Forge.md",
+      "proposed_content": "...",
+      "original_content": "...",
+      "diff": "--- a/...\n+++ b/...\n@@ ... @@\n..."
+    }
+  ],
+  "operations_performed": [...]
 }
 ```
+
+Use the `session_id` to confirm, modify, or discard.
+
+---
+
+### `POST /review/{session_id}/confirm` — Commit to disk
+
+Writes all staged changes to the vault. Cleans up the session.
+
+```json
+{
+  "session_id": "a1b2c3d4-...",
+  "files_committed": ["NPCs/Aldric Ironhand.md", "Locations/Stormhaven/Shops/Iron Forge.md"],
+  "message": "Successfully committed 2 file(s) to vault."
+}
+```
+
+---
+
+### `POST /review/{session_id}/modify` — Request changes
+
+Discards the current staged result and re-runs the agent with your original
+prompt **plus** your feedback. Returns a fresh `PendingReview` with a new `session_id`.
+
+```json
+{ "feedback": "Give Aldric a backstory as a disgraced knight, not a lifelong smith" }
+```
+
+You can modify as many times as needed before confirming or discarding.
+
+---
+
+### `DELETE /review/{session_id}` — Discard
+
+Drops the session. Nothing is written to the vault.
+
+---
 
 ### `GET /status`
 
@@ -101,12 +150,11 @@ Returns index health and file counts.
 ### `GET /files?query=dragon+temple`
 
 Without `query`: lists all indexed files.
-With `query`: returns the top 20 semantically relevant files for that query.
+With `query`: returns the top 20 semantically relevant files.
 
 ### `POST /reindex`
 
 Triggers a full index rebuild in the background.
-Use after bulk edits to the vault outside of this app.
 
 ---
 
