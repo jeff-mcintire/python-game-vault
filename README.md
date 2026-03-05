@@ -33,16 +33,16 @@ make directly in Obsidian are automatically picked up and re-indexed.
 
 ### 1. Prerequisites
 
-- Python 3.11+
+- [uv](https://docs.astral.sh/uv/getting-started/installation/) (install with `curl -LsSf https://astral.sh/uv/install.sh | sh`)
 - Your NAS vault mounted at a local path (SMB/NFS/etc.)
 
 ### 2. Install dependencies
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate      # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
+uv sync
 ```
+
+That's it — `uv` creates the virtualenv and installs all dependencies automatically.
 
 > The first run downloads the `all-MiniLM-L6-v2` embedding model (~80 MB).
 > Subsequent starts load from cache.
@@ -57,7 +57,7 @@ cp .env.example .env
 ### 4. Start the server
 
 ```bash
-uvicorn main:app --reload --port 8000
+uv run uvicorn main:app --reload --port 8000
 ```
 
 On first start the server will build the embedding index for your vault
