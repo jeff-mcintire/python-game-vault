@@ -1,0 +1,208 @@
+{
+  "main": {
+    "id": "5e153cc3a918d675",
+    "type": "split",
+    "children": [
+      {
+        "id": "3dd6b53669606eb4",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "fec94fd65271ba30",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "Locations/Willowmere/The Hearthstone Inn.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "The Hearthstone Inn"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "5644e5d691b4ba4d",
+    "type": "split",
+    "children": [
+      {
+        "id": "eca166a4ca5197b1",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "a65fc5480b9b3e8a",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Files"
+            }
+          },
+          {
+            "id": "77a817d322ccb9e9",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Search"
+            }
+          },
+          {
+            "id": "bccdccfa58ba7dc6",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "Bookmarks"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "cc5e3efe907f7ce2",
+    "type": "split",
+    "children": [
+      {
+        "id": "0fcfc960c0db70c5",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "123be3e177af6afd",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "file": "Locations/Willowmere/The Hearthstone Inn.md",
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Backlinks for The Hearthstone Inn"
+            }
+          },
+          {
+            "id": "4cae884e970cfae7",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "file": "Locations/Willowmere/The Hearthstone Inn.md",
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Outgoing links from The Hearthstone Inn"
+            }
+          },
+          {
+            "id": "1e8aef5718214bc8",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Tags"
+            }
+          },
+          {
+            "id": "0275f3f5c9b3571f",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "All properties"
+            }
+          },
+          {
+            "id": "d8d6ec0189ba6774",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "file": "Locations/Willowmere/The Hearthstone Inn.md",
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Outline of The Hearthstone Inn"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:Open quick switcher": false,
+      "graph:Open graph view": false,
+      "canvas:Create new canvas": false,
+      "daily-notes:Open today's daily note": false,
+      "templates:Insert template": false,
+      "command-palette:Open command palette": false,
+      "bases:Create new base": false
+    }
+  },
+  "active": "fec94fd65271ba30",
+  "lastOpenFiles": [
+    "NPCs/Lily Hollowell.md",
+    "NPCs/Gareth Hollowell.md",
+    "NPCs/Willem Moss.md",
+    "NPCs/Verna Ashwell.md",
+    "NPCs/Old Brennan.md",
+    "NPCs/Mabel Dunbrook.md",
+    "NPCs/Jorin Thorne.md",
+    "NPCs/Hanna Hollowell.md",
+    "NPCs/Elda Moss.md",
+    "NPCs/Corwin Dunbrook.md",
+    "NPCs/Aldric Thorne.md",
+    "NPCs/Breta Ironfoot.md",
+    "Locations/Willowmere/Ironfoot Smithy.md",
+    "NPCs",
+    "Locations/Willowmere/Willowmere.md",
+    "Locations/Willowmere/The Hearthstone Inn.md",
+    "Locations/Willowmere/Mabel's Sundries.md",
+    "Locations/Willowmere",
+    "Locations"
+  ]
+}

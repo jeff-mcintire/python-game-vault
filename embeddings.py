@@ -62,6 +62,14 @@ class VaultIndex:
             self.file_paths.append(f["relative_path"])
             self.file_contents[f["relative_path"]] = f["full_text"]
 
+        if not texts:
+            # model.encode([]) returns shape (0,) not (0, dim) — store None
+            # so update_file and search handle the empty-index path cleanly.
+            self.embeddings = None
+            self._save_cache()
+            logger.info("Index build complete (no files to index).")
+            return
+
         self.embeddings = self.model.encode(
             texts,
             batch_size=32,
@@ -88,7 +96,7 @@ class VaultIndex:
             self.embeddings[idx] = new_vec
         else:
             self.file_paths.append(relative_path)
-            if self.embeddings is not None:
+            if _is_valid_embeddings(self.embeddings):
                 self.embeddings = np.vstack(
                     [self.embeddings, new_vec.reshape(1, -1)]
                 )
@@ -119,11 +127,20 @@ class VaultIndex:
 
         Score is cosine similarity in [0, 1] because we pre-normalise.
         """
-        if self.embeddings is None or len(self.file_paths) == 0:
+        if not _is_valid_embeddings(self.embeddings) or len(self.file_paths) == 0:
             logger.warning("Index is empty — returning no results.")
             return []
 
         q_vec = self.model.encode([query], normalize_embeddings=True)[0]
+
+        # Guard: q_vec must match the embedding dimension
+        if q_vec.shape[0] != self.embeddings.shape[1]:
+            logger.error(
+                f"Embedding dimension mismatch: index has {self.embeddings.shape[1]}d "
+                f"but query produced {q_vec.shape[0]}d — rebuilding index is recommended."
+            )
+            return []
+
         scores: np.ndarray = self.embeddings @ q_vec  # cosine similarity
 
         k = min(top_k, len(self.file_paths))
@@ -193,3 +210,20 @@ def _build_embed_text(file_dict: dict) -> str:
     name = fm.get("name", "")
     body = file_dict.get("content", "")[:EMBED_CHARS]
     return f"{file_dict['relative_path']} {name} {tag_str} {body}"
+
+
+def _is_valid_embeddings(embeddings: Optional[np.ndarray]) -> bool:
+    """
+    Return True only if embeddings is a 2D array with at least one row
+    and at least one column.  Guards against:
+      - None  (index never built)
+      - shape (0,)  — returned by model.encode([]) on empty input
+      - shape (N, 0) — result of a bad np.vstack after the above
+    """
+    return (
+        embeddings is not None
+        and isinstance(embeddings, np.ndarray)
+        and embeddings.ndim == 2
+        and embeddings.shape[0] > 0
+        and embeddings.shape[1] > 0
+    )
