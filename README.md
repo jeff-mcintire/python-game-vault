@@ -247,36 +247,47 @@ along with their default and available models.
 
 ### Image Generation Endpoints
 
-Both endpoints require `XAI_API_KEY` and use Grok Aurora (`grok-imagine-image`).
-Each request returns **2 images by default** (configurable with `n`).
+Both endpoints support two image generation backends selectable via the `provider` field.
 
-> Images are returned as temporary URLs hosted by xAI. Download them promptly
-> if you want to keep them — they expire after a short window.
-> Cost: **$0.07 per image** ($0.14 per default 2-image request).
+| Provider | Model | Style | URL lifetime | Cost | Requires |
+|---|---|---|---|---|---|
+| `aurora` (default) | `grok-imagine-image` | Photorealistic, cinematic | ⚠️ Temporary | $0.07/image | `XAI_API_KEY` |
+| `flux2pro` | `fal-ai/flux-2-pro` | Illustrated, painterly, stylised | ✅ Persistent | $0.03/MP | `FAL_KEY` |
+
+**When to use each:**
+- **Aurora** — photorealistic character portraits, dramatic cinematic scenes, realistic maps
+- **FLUX 2 Pro** — illustrated RPG art, painterly environments, stylised concept art, anything where you want that "fantasy book cover" look rather than a photograph
+
+> ⚠️ Aurora URLs are temporary — download promptly. FLUX 2 Pro URLs are persistent fal.media links.
+
+Each request returns **2 images by default** (configurable with `n`).
 
 #### Image Options
 
-All image endpoints accept the same three optional display parameters:
+All image endpoints accept the same optional display parameters:
 
-| Field | Type | Default | Description |
+| Field | Type | Default | Notes |
 |---|---|---|---|
-| `aspect_ratio` | string | `"auto"` | Image proportions — see table below |
-| `resolution` | `"1k"` \| `"2k"` | `"1k"` | Output resolution |
+| `provider` | `"aurora"` \| `"flux2pro"` | `"aurora"` | Image generation backend |
+| `aspect_ratio` | string | `"auto"` | See table below |
+| `resolution` | `"1k"` \| `"2k"` | `"1k"` | Aurora only — ignored for FLUX 2 Pro |
 | `style` | string \| null | `null` | Art style preset — see table below |
+| `seed` | integer \| null | `null` | FLUX 2 Pro only — for reproducibility |
+| `safety_tolerance` | `"1"`–`"6"` | `"2"` | FLUX 2 Pro only — use `"5"` for dark fantasy |
 
 **Supported aspect ratios:**
 
-| Value | Best for |
-|---|---|
-| `auto` | Model picks the best ratio for the content |
-| `1:1` | Social media, tokens, thumbnails |
-| `16:9` | Widescreen scenes, location banners |
-| `9:16` | Mobile, vertical story cards |
-| `4:3` / `3:4` | Presentations, portrait cards |
-| `3:2` / `2:3` | Photography style |
-| `2:1` / `1:2` | Wide banners, headers |
-| `19.5:9` / `9:19.5` | Modern smartphone displays |
-| `20:9` / `9:20` | Ultra-wide scenes |
+| Value | Best for | FLUX 2 Pro mapping |
+|---|---|---|
+| `auto` | Model picks the best ratio | `landscape_4_3` |
+| `1:1` | Social media, tokens, thumbnails | `square_hd` |
+| `16:9` | Widescreen scenes, location banners | `landscape_16_9` |
+| `9:16` | Mobile, vertical story cards | `portrait_16_9` |
+| `4:3` / `3:4` | Presentations, portrait cards | `landscape_4_3` / `portrait_4_3` |
+| `3:2` / `2:3` | Photography style | `landscape_4_3` / `portrait_4_3` |
+| `2:1` / `1:2` | Wide banners, headers | `landscape_16_9` / `portrait_16_9` |
+| `19.5:9` / `9:19.5` | Modern smartphone displays | `landscape_16_9` / `portrait_16_9` |
+| `20:9` / `9:20` | Ultra-wide scenes | `landscape_16_9` / `portrait_16_9` |
 
 **Style presets** (appended to the prompt as text — not a native API parameter):
 
@@ -295,13 +306,13 @@ All image endpoints accept the same three optional display parameters:
 
 #### `POST /images/generate` — Direct prompt
 
-Generate images directly from your own prompt. The prompt is sent to Aurora
-as-is (with the style suffix appended if `style` is set).
+Generate images directly from your own prompt.
 
-**Request:**
+**Aurora example:**
 ```json
 {
   "prompt": "A hooded elven rogue on rain-slicked cobblestones at night, lantern glow",
+  "provider": "aurora",
   "n": 2,
   "aspect_ratio": "3:2",
   "resolution": "2k",
@@ -309,17 +320,30 @@ as-is (with the style suffix appended if `style` is set).
 }
 ```
 
+**FLUX 2 Pro example:**
+```json
+{
+  "prompt": "A hooded elven rogue on rain-slicked cobblestones at night, lantern glow",
+  "provider": "flux2pro",
+  "n": 2,
+  "aspect_ratio": "3:2",
+  "style": "oil_painting",
+  "safety_tolerance": "5"
+}
+```
+
 **Response:**
 ```json
 {
   "images": [
-    "https://images.x.ai/...",
-    "https://images.x.ai/..."
+    "https://storage.googleapis.com/falserverless/...",
+    "https://storage.googleapis.com/falserverless/..."
   ],
-  "prompt_used": "A hooded elven rogue on rain-slicked cobblestones at night, lantern glow — dark fantasy digital art, dramatic lighting, highly detailed",
+  "prompt_used": "A hooded elven rogue on rain-slicked cobblestones at night, lantern glow — rendered as an oil painting in the style of classical impressionism",
+  "provider": "flux2pro",
   "aspect_ratio": "3:2",
-  "resolution": "2k",
-  "style": "dark_fantasy",
+  "resolution": "1k",
+  "style": "oil_painting",
   "crafted_from_vault": false,
   "vault_files_used": []
 }
@@ -338,10 +362,10 @@ The app will:
 3. Ask Grok to craft a rich, lore-accurate image generation prompt from all
    that context — incorporating appearance details, setting, atmosphere, and
    the requested style.
-4. Generate `n` images from the crafted prompt.
+4. Generate `n` images from the crafted prompt via the chosen `provider`.
 
-Returns the image URLs **and** the crafted prompt so you can see exactly what
-was sent to Aurora.
+> Note: Vault prompt crafting always uses Grok chat (requires `XAI_API_KEY`)
+> regardless of which image backend renders the final image.
 
 **Request:**
 ```json
@@ -350,9 +374,10 @@ was sent to Aurora.
   "vault_references": ["NPCs/Sable.md", "Locations/Dockward.md"],
   "top_k": 4,
   "n": 2,
+  "provider": "flux2pro",
   "aspect_ratio": "16:9",
-  "resolution": "2k",
-  "style": "dark_fantasy"
+  "style": "dark_fantasy",
+  "safety_tolerance": "5"
 }
 ```
 
@@ -362,9 +387,12 @@ was sent to Aurora.
 | `vault_references` | string[] | `[]` | Explicit vault file paths to include |
 | `top_k` | integer | 6 | Number of semantic search results to also pull in |
 | `n` | integer | 2 | Number of images to generate |
+| `provider` | string | `"aurora"` | `"aurora"` or `"flux2pro"` |
 | `aspect_ratio` | string | `"auto"` | See image options above |
-| `resolution` | string | `"1k"` | `"1k"` or `"2k"` |
+| `resolution` | string | `"1k"` | Aurora only |
 | `style` | string \| null | `null` | Style preset — see image options above |
+| `seed` | integer \| null | `null` | FLUX 2 Pro only |
+| `safety_tolerance` | string | `"2"` | FLUX 2 Pro only — `"5"` for dark fantasy |
 
 **Response:**
 ```json

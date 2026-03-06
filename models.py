@@ -104,10 +104,30 @@ class FileListResponse(BaseModel):
 # Importing valid option lists from image_gen keeps models and logic in sync.
 from image_gen import ASPECT_RATIOS, RESOLUTIONS, STYLES
 
+# Image provider choices
+IMAGE_PROVIDERS = ["aurora", "flux2pro"]
+"""
+aurora   — Grok Aurora (xAI).  Photorealistic, cinematic.
+           Requires XAI_API_KEY.  URLs are temporary.
+flux2pro — FLUX 2 Pro (Black Forest Labs via fal.ai).  Illustrated /
+           painterly / stylised.  Commercially licensed.
+           Requires FAL_KEY.  URLs are persistent.
+"""
+
+FLUX_SAFETY_TOLERANCES = ["1", "2", "3", "4", "5", "6"]
+
 
 class ImageGenerateRequest(BaseModel):
     prompt: str
     n: int = 2
+    # --- provider ---
+    provider: str = "aurora"
+    """
+    Image generation backend.  One of: aurora | flux2pro
+      aurora   — Grok Aurora (xAI).  Photorealistic, cinematic.
+      flux2pro — FLUX 2 Pro (fal.ai).  Illustrated / painterly / stylised.
+    Default: aurora.
+    """
     # --- display options ---
     aspect_ratio: str = "auto"
     """
@@ -115,9 +135,10 @@ class ImageGenerateRequest(BaseModel):
     auto | 1:1 | 16:9 | 9:16 | 4:3 | 3:4 | 3:2 | 2:3 | 2:1 | 1:2
     19.5:9 | 9:19.5 | 20:9 | 9:20
     Default: auto (model picks the best ratio for the prompt).
+    Note: FLUX 2 Pro maps these to its nearest preset automatically.
     """
     resolution: str = "1k"
-    """Output resolution.  One of: 1k | 2k.  Default: 1k."""
+    """Output resolution.  One of: 1k | 2k.  Default: 1k.  (Aurora only — ignored for FLUX 2 Pro.)"""
     style: Optional[str] = None
     """
     Art style preset appended to the prompt.  One of:
@@ -125,6 +146,22 @@ class ImageGenerateRequest(BaseModel):
     anime | dark_fantasy | concept_art | ink_wash
     Default: None (no style directive added).
     """
+    # --- FLUX 2 Pro options (ignored when provider = aurora) ---
+    seed: Optional[int] = None
+    """Seed for reproducible output.  FLUX 2 Pro only."""
+    safety_tolerance: str = "2"
+    """
+    Safety filter strictness.  One of: 1 | 2 | 3 | 4 | 5 | 6
+    1 = most strict, 6 = most permissive.  Default: 2.
+    Use 5 for dark fantasy / mature RPG content.  FLUX 2 Pro only.
+    """
+
+    @field_validator("provider")
+    @classmethod
+    def validate_provider(cls, v: str) -> str:
+        if v not in IMAGE_PROVIDERS:
+            raise ValueError(f"provider must be one of {IMAGE_PROVIDERS}")
+        return v
 
     @field_validator("aspect_ratio")
     @classmethod
@@ -145,6 +182,13 @@ class ImageGenerateRequest(BaseModel):
     def validate_style(cls, v: Optional[str]) -> Optional[str]:
         if v is not None and v not in STYLES:
             raise ValueError(f"style must be one of {STYLES} or null")
+        return v
+
+    @field_validator("safety_tolerance")
+    @classmethod
+    def validate_safety_tolerance(cls, v: str) -> str:
+        if v not in FLUX_SAFETY_TOLERANCES:
+            raise ValueError(f"safety_tolerance must be one of {FLUX_SAFETY_TOLERANCES}")
         return v
 
 
@@ -153,10 +197,23 @@ class VaultImageRequest(BaseModel):
     vault_references: list[str] = []     # optional explicit file paths to include
     top_k: int = 6                       # how many semantic search results to pull
     n: int = 2
+    # --- provider ---
+    provider: str = "aurora"
+    """Image generation backend.  One of: aurora | flux2pro  (default: aurora)."""
     # --- display options (same as ImageGenerateRequest) ---
     aspect_ratio: str = "auto"
     resolution: str = "1k"
     style: Optional[str] = None
+    # --- FLUX 2 Pro options ---
+    seed: Optional[int] = None
+    safety_tolerance: str = "2"
+
+    @field_validator("provider")
+    @classmethod
+    def validate_provider(cls, v: str) -> str:
+        if v not in IMAGE_PROVIDERS:
+            raise ValueError(f"provider must be one of {IMAGE_PROVIDERS}")
+        return v
 
     @field_validator("aspect_ratio")
     @classmethod
@@ -179,12 +236,20 @@ class VaultImageRequest(BaseModel):
             raise ValueError(f"style must be one of {STYLES} or null")
         return v
 
+    @field_validator("safety_tolerance")
+    @classmethod
+    def validate_safety_tolerance(cls, v: str) -> str:
+        if v not in FLUX_SAFETY_TOLERANCES:
+            raise ValueError(f"safety_tolerance must be one of {FLUX_SAFETY_TOLERANCES}")
+        return v
+
 
 class ImageGenerateResponse(BaseModel):
     images: list[str]                    # list of image URLs
     prompt_used: str                     # the final prompt sent to the image model
+    provider: str = "aurora"             # which image backend was used
     aspect_ratio: str = "auto"           # aspect ratio used
-    resolution: str = "1k"              # resolution used
+    resolution: str = "1k"              # resolution used (aurora only)
     style: Optional[str] = None          # style preset used (if any)
     crafted_from_vault: bool = False
     vault_files_used: list[str] = []

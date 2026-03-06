@@ -19,6 +19,23 @@ Install:        uv add fal-client   (or: uv sync after adding to pyproject.toml)
 Implemented tools
 -----------------
 
+  flux2_pro_generate(prompt, n, image_size, seed, safety_tolerance, ...)
+    fal-ai/flux-2-pro  (Black Forest Labs, commercially licensed)
+    Zero-config text-to-image generation — 32B parameter model, production
+    optimised, no inference steps or guidance scales to configure.  Excellent
+    for illustrated/painterly RPG art; a stylistic complement to Grok Aurora's
+    photorealism.
+
+    Aspect ratio is controlled via `image_size` (FLUX's enum, not "16:9" style).
+    Use the convenience wrapper flux2_pro_generate() which accepts the same
+    "16:9" / "1:1" strings as the Grok endpoints and maps them automatically.
+
+    safety_tolerance: "1" (strict) → "6" (permissive).  Set to "5" or "6"
+    for dark fantasy / mature content (disabling the checker outright is not
+    recommended; tolerance "5" handles most RPG art needs).
+
+    Output URLs are persistent fal.media links (unlike xAI's temporary URLs).
+
   clarity_upscale(image_url, ...)
     fal-ai/clarity-upscaler
     Diffusion-based upscaler — intelligently adds detail rather than just
@@ -49,7 +66,117 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-FAL_CLARITY_MODEL = "fal-ai/clarity-upscaler"
+FAL_CLARITY_MODEL  = "fal-ai/clarity-upscaler"
+FAL_FLUX2_PRO_MODEL = "fal-ai/flux-2-pro"
+
+# ---------------------------------------------------------------------------
+# Aspect-ratio translation: "16:9" style → FLUX image_size enum
+# ---------------------------------------------------------------------------
+# FLUX 2 Pro uses named size presets, not ratio strings.
+# We map the shared ratio vocabulary to the closest FLUX preset.
+
+_FLUX_SIZE_MAP: dict[str, str] = {
+    "auto":    "landscape_4_3",   # sensible cinematic default
+    "1:1":     "square_hd",
+    "16:9":    "landscape_16_9",
+    "9:16":    "portrait_16_9",
+    "4:3":     "landscape_4_3",
+    "3:4":     "portrait_4_3",
+    "3:2":     "landscape_4_3",   # closest preset
+    "2:3":     "portrait_4_3",    # closest preset
+    "2:1":     "landscape_16_9",  # widest landscape available
+    "1:2":     "portrait_16_9",   # tallest portrait available
+    "19.5:9":  "landscape_16_9",
+    "9:19.5":  "portrait_16_9",
+    "20:9":    "landscape_16_9",
+    "9:20":    "portrait_16_9",
+}
+
+FLUX2_PRO_IMAGE_SIZES = [
+    "square_hd", "square",
+    "portrait_4_3", "portrait_16_9",
+    "landscape_4_3", "landscape_16_9",
+]
+
+
+def _aspect_to_flux_size(aspect_ratio: str) -> str:
+    """Convert a shared aspect-ratio string to a FLUX image_size enum value."""
+    return _FLUX_SIZE_MAP.get(aspect_ratio, "landscape_4_3")
+
+
+# ---------------------------------------------------------------------------
+# FLUX 2 Pro — text-to-image generation
+# ---------------------------------------------------------------------------
+
+def flux2_pro_generate(
+    prompt: str,
+    n: int = 1,
+    aspect_ratio: str = "auto",
+    seed: Optional[int] = None,
+    safety_tolerance: str = "2",
+    enable_safety_checker: bool = True,
+    output_format: str = "jpeg",
+) -> list[str]:
+    """
+    Generate images using fal-ai/flux-2-pro (Black Forest Labs, commercially
+    licensed).
+
+    FLUX 2 Pro is a zero-configuration 32B text-to-image model optimised for
+    production workflows.  It excels at illustrated/painterly and stylised RPG
+    art — a strong complement to Grok Aurora's photorealism.
+
+    Unlike Aurora (which accepts `n` natively), FLUX 2 Pro generates one image
+    per API call.  When n > 1 this function fires n sequential calls and
+    collects the results.
+
+    Parameters
+    ----------
+    prompt              Text description of the image to generate.
+    n                   Number of images to generate (default 1).
+    aspect_ratio        Shared ratio string ("16:9", "1:1", etc.).  Mapped
+                        automatically to the FLUX image_size enum.
+    seed                Optional seed for reproducibility.
+    safety_tolerance    "1" (strict) → "6" (permissive).  Use "5" for dark
+                        fantasy / mature content.  Default: "2".
+    enable_safety_checker  Whether to enable the built-in safety checker.
+                        Default: True.
+    output_format       "jpeg" (default) or "png".
+
+    Returns
+    -------
+    list[str]   Persistent fal.media-hosted image URLs.
+    """
+    fal_client = _get_fal_client()
+
+    image_size = _aspect_to_flux_size(aspect_ratio)
+
+    arguments: dict = {
+        "prompt":                 prompt,
+        "image_size":             image_size,
+        "safety_tolerance":       safety_tolerance,
+        "enable_safety_checker":  enable_safety_checker,
+        "output_format":          output_format,
+    }
+    if seed is not None:
+        arguments["seed"] = seed
+
+    logger.info(
+        f"FLUX 2 Pro generate | n={n} size={image_size} "
+        f"tolerance={safety_tolerance} | prompt: {prompt[:80]}…"
+    )
+
+    urls: list[str] = []
+    for i in range(n):
+        result = fal_client.run(FAL_FLUX2_PRO_MODEL, arguments=arguments)
+        images = result.get("images", [])
+        for img in images:
+            url = img.get("url", "")
+            if url:
+                urls.append(url)
+        logger.info(f"  Image {i + 1}/{n}: {(urls[-1] if urls else 'no url')[:60]}…")
+
+    logger.info(f"FLUX 2 Pro done | {len(urls)} image(s) generated")
+    return urls
 
 
 # ---------------------------------------------------------------------------

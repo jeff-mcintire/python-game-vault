@@ -34,7 +34,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from agent import RPGAgent
 from embeddings import VaultIndex
-from fal_tools import clarity_upscale
+from fal_tools import clarity_upscale, flux2_pro_generate
 from image_gen import build_vault_prompt, generate_images
 from video_gen import (
     build_vault_video_prompt,
@@ -423,7 +423,25 @@ async def providers():
                 "grok-3-mini",
             ],
         }
-    return {"providers": available}
+
+    # Image generation providers
+    image_providers = {}
+    if os.getenv("XAI_API_KEY"):
+        image_providers["aurora"] = {
+            "model": "grok-imagine-image",
+            "description": "Grok Aurora — photorealistic / cinematic",
+            "url_persistence": "temporary",
+            "pricing": "$0.07/image",
+        }
+    if os.getenv("FAL_KEY"):
+        image_providers["flux2pro"] = {
+            "model": "fal-ai/flux-2-pro",
+            "description": "FLUX 2 Pro — illustrated / painterly / stylised (commercially licensed)",
+            "url_persistence": "persistent",
+            "pricing": "$0.03/MP",
+        }
+
+    return {"providers": available, "image_providers": image_providers}
 
 
 # ---------------------------------------------------------------------------
@@ -476,39 +494,86 @@ async def reindex(background_tasks: BackgroundTasks):
 )
 async def images_generate(request: ImageGenerateRequest):
     """
-    Generate images directly from your own prompt using Grok Aurora.
+    Generate images directly from your own prompt.
 
-    Returns `n` image URLs (default 2). Images are hosted temporarily
-    on xAI's storage — download them if you want to keep them.
+    Set `provider` to choose the image backend:
 
-    **Requires** `XAI_API_KEY` to be set.
+    - **aurora** (default) — Grok Aurora (xAI).  Photorealistic, cinematic.
+      Requires `XAI_API_KEY`.  URLs are temporary — download to keep.
+    - **flux2pro** — FLUX 2 Pro (fal.ai / Black Forest Labs).  Illustrated,
+      painterly, stylised.  Commercially licensed.
+      Requires `FAL_KEY`.  URLs are persistent.
 
-    Example:
+    Returns `n` image URLs (default 2).
+
+    **Aurora example:**
     ```json
     {
-      "prompt": "A hooded elven rogue standing on rain-slicked cobblestones, lantern light, dark fantasy oil painting",
-      "n": 2
+      "prompt": "A hooded elven rogue standing on rain-slicked cobblestones, lantern light",
+      "provider": "aurora",
+      "n": 2,
+      "style": "dark_fantasy"
+    }
+    ```
+
+    **FLUX 2 Pro example:**
+    ```json
+    {
+      "prompt": "A hooded elven rogue standing on rain-slicked cobblestones, lantern light",
+      "provider": "flux2pro",
+      "n": 2,
+      "style": "oil_painting",
+      "safety_tolerance": "5"
     }
     ```
     """
-    if not os.getenv("XAI_API_KEY"):
-        raise HTTPException(status_code=400, detail="XAI_API_KEY is not set.")
     try:
-        urls = generate_images(
-            prompt=request.prompt,
-            n=request.n,
-            aspect_ratio=request.aspect_ratio,
-            resolution=request.resolution,
-            style=request.style,
-        )
+        if request.provider == "flux2pro":
+            if not os.getenv("FAL_KEY"):
+                raise HTTPException(status_code=400, detail="FAL_KEY is not set.")
+
+            # Style suffix is applied the same way as Aurora — append to prompt
+            from image_gen import STYLE_SUFFIXES
+            final_prompt = request.prompt
+            if request.style and request.style in STYLE_SUFFIXES:
+                final_prompt = f"{request.prompt.rstrip('.')} — {STYLE_SUFFIXES[request.style]}"
+
+            urls = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: flux2_pro_generate(
+                    prompt=final_prompt,
+                    n=request.n,
+                    aspect_ratio=request.aspect_ratio,
+                    seed=request.seed,
+                    safety_tolerance=request.safety_tolerance,
+                ),
+            )
+        else:
+            # aurora (default)
+            if not os.getenv("XAI_API_KEY"):
+                raise HTTPException(status_code=400, detail="XAI_API_KEY is not set.")
+            urls = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: generate_images(
+                    prompt=request.prompt,
+                    n=request.n,
+                    aspect_ratio=request.aspect_ratio,
+                    resolution=request.resolution,
+                    style=request.style,
+                ),
+            )
+
         return ImageGenerateResponse(
             images=urls,
             prompt_used=request.prompt,
+            provider=request.provider,
             aspect_ratio=request.aspect_ratio,
             resolution=request.resolution,
             style=request.style,
             crafted_from_vault=False,
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.exception("Image generation failed")
         raise HTTPException(status_code=500, detail=str(e))
@@ -557,8 +622,11 @@ async def images_from_vault(request: VaultImageRequest):
     }
     ```
     """
+    # Validate credentials — XAI always needed for prompt crafting
     if not os.getenv("XAI_API_KEY"):
-        raise HTTPException(status_code=400, detail="XAI_API_KEY is not set.")
+        raise HTTPException(status_code=400, detail="XAI_API_KEY is not set (required for vault prompt crafting).")
+    if request.provider == "flux2pro" and not os.getenv("FAL_KEY"):
+        raise HTTPException(status_code=400, detail="FAL_KEY is not set (required for FLUX 2 Pro).")
     if _index is None or _vault is None:
         raise HTTPException(status_code=503, detail="Vault not initialised.")
 
@@ -584,29 +652,52 @@ async def images_from_vault(request: VaultImageRequest):
         vault_context = "\n\n".join(context_parts) if context_parts else "(no vault files found)"
 
         # 4. Ask Grok to craft a rich image prompt from the context
-        crafted_prompt = build_vault_prompt(
-            description=request.description,
-            vault_context=vault_context,
-            style=request.style,
+        crafted_prompt = await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: build_vault_prompt(
+                description=request.description,
+                vault_context=vault_context,
+                style=request.style,
+            ),
         )
 
-        # 5. Generate images from the crafted prompt
-        urls = generate_images(
-            prompt=crafted_prompt,
-            n=request.n,
-            aspect_ratio=request.aspect_ratio,
-            resolution=request.resolution,
-            style=request.style,
-        )
+        # 5. Generate images from the crafted prompt via chosen provider
+        if request.provider == "flux2pro":
+            from image_gen import STYLE_SUFFIXES
+            final_prompt = crafted_prompt
+            if request.style and request.style in STYLE_SUFFIXES:
+                final_prompt = f"{crafted_prompt.rstrip('.')} — {STYLE_SUFFIXES[request.style]}"
+            urls = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: flux2_pro_generate(
+                    prompt=final_prompt,
+                    n=request.n,
+                    aspect_ratio=request.aspect_ratio,
+                    seed=request.seed,
+                    safety_tolerance=request.safety_tolerance,
+                ),
+            )
+        else:
+            urls = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: generate_images(
+                    prompt=crafted_prompt,
+                    n=request.n,
+                    aspect_ratio=request.aspect_ratio,
+                    resolution=request.resolution,
+                    style=request.style,
+                ),
+            )
 
         logger.info(
-            f"Vault image: {len(files_used)} file(s) used, "
+            f"Vault image [{request.provider}]: {len(files_used)} file(s) used, "
             f"{len(urls)} image(s) generated"
         )
 
         return ImageGenerateResponse(
             images=urls,
             prompt_used=crafted_prompt,
+            provider=request.provider,
             aspect_ratio=request.aspect_ratio,
             resolution=request.resolution,
             style=request.style,
