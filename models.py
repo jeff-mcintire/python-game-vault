@@ -155,6 +155,13 @@ class ImageGenerateRequest(BaseModel):
     1 = most strict, 6 = most permissive.  Default: 2.
     Use 5 for dark fantasy / mature RPG content.  FLUX 2 Pro only.
     """
+    enable_safety_checker: bool = True
+    """
+    Whether to run the built-in safety checker.  Default: True.
+    Set to false for dark fantasy / mature RPG content.  FLUX 2 Pro only.
+    Note: safety_tolerance is the finer-grained dial; disabling the checker
+    entirely removes the gate altogether.
+    """
 
     @field_validator("provider")
     @classmethod
@@ -207,6 +214,8 @@ class VaultImageRequest(BaseModel):
     # --- FLUX 2 Pro options ---
     seed: Optional[int] = None
     safety_tolerance: str = "2"
+    enable_safety_checker: bool = True
+    """Whether to run the built-in safety checker.  Default: True.  FLUX 2 Pro only."""
 
     @field_validator("provider")
     @classmethod

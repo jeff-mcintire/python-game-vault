@@ -546,6 +546,7 @@ async def images_generate(request: ImageGenerateRequest):
                     aspect_ratio=request.aspect_ratio,
                     seed=request.seed,
                     safety_tolerance=request.safety_tolerance,
+                    enable_safety_checker=request.enable_safety_checker,
                 ),
             )
         else:
@@ -675,6 +676,7 @@ async def images_from_vault(request: VaultImageRequest):
                     aspect_ratio=request.aspect_ratio,
                     seed=request.seed,
                     safety_tolerance=request.safety_tolerance,
+                    enable_safety_checker=request.enable_safety_checker,
                 ),
             )
         else:
