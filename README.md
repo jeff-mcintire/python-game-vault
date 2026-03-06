@@ -668,9 +668,9 @@ POST /videos/from-vault
 
 ---
 
-### Enhancement Endpoints (fal.ai)
+### Enhancement & Moderation Endpoints (fal.ai)
 
-Enhancement tools use [fal.ai](https://fal.ai) — a serverless GPU inference
+Enhancement and moderation tools use [fal.ai](https://fal.ai) — a serverless GPU inference
 platform hosting 600+ open-source models.  All fal.ai tools share the same
 `FAL_KEY` credential and the same underlying call pattern, so adding more
 tools later requires minimal code.
@@ -742,6 +742,76 @@ URL into this endpoint → get back a permanent, high-res version.
 
 ---
 
+#### `POST /images/check-nsfw` — NSFW Checker
+
+Binary NSFW / SFW classification using **fal-ai/x-ailab/nsfw**.
+
+Accepts up to **10 image URLs** per request and returns a per-image verdict
+(`true` = NSFW, `false` = SFW). Results are returned in the same order as
+the input URLs.
+
+**Requires** `FAL_KEY`.
+
+**Intended workflow — generate with relaxed safety, then gate:**
+
+```
+POST /images/generate  { "provider": "flux2pro", "safety_tolerance": "5", "enable_safety_checker": false, ... }
+  → returns image URLs
+
+POST /images/check-nsfw  { "image_urls": [ ... ] }
+  → returns is_nsfw verdict per image
+
+Store / surface only images where is_nsfw == false
+```
+
+**Request:**
+```json
+{
+  "image_urls": [
+    "https://storage.fal.media/.../image1.jpg",
+    "https://storage.fal.media/.../image2.jpg"
+  ]
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `image_urls` | string[] | 1–10 image URLs or base64 data URIs to classify |
+
+**Response:**
+```json
+{
+  "results": [
+    { "image_url": "https://storage.fal.media/.../image1.jpg", "is_nsfw": false },
+    { "image_url": "https://storage.fal.media/.../image2.jpg", "is_nsfw": true }
+  ],
+  "total_checked": 2,
+  "nsfw_count": 1,
+  "sfw_count": 1
+}
+```
+
+---
+
+#### FLUX 2 Pro Safety Controls
+
+FLUX 2 Pro (`provider: "flux2pro"`) exposes two independent safety controls:
+
+| Field | Type | Default | Effect |
+|---|---|---|---|
+| `safety_tolerance` | `"1"`–`"6"` | `"2"` | Graduated filter — `1` = strictest, `6` = most permissive |
+| `enable_safety_checker` | bool | `true` | Master switch — set `false` to disable the filter gate entirely |
+
+**Recommended approach for RPG / dark fantasy content:**
+
+- Start with `safety_tolerance: "5"` and `enable_safety_checker: true` — this handles the vast majority of dark fantasy art while keeping a safety net in place.
+- If you're still getting false positives, set `enable_safety_checker: false` and rely on `POST /images/check-nsfw` as a post-generation gate instead.
+- Setting both `safety_tolerance: "6"` and `enable_safety_checker: false` removes all generation-side filtering — use `check-nsfw` downstream if content policies matter.
+
+> These controls are FLUX 2 Pro only — Aurora (Grok) uses its own internal moderation and does not expose equivalent parameters.
+
+---
+
 ## NAS / Network Share Notes
 
 - Mount the share **before** starting the server.
@@ -768,6 +838,8 @@ URL into this endpoint → get back a permanent, high-res version.
 | Video poll interval | `video_gen.py` | `5` s | Change `DEFAULT_POLL_INTERVAL` |
 | Video timeout | `video_gen.py` | `300` s | Change `DEFAULT_TIMEOUT_SECONDS` |
 | Clarity upscaler model | `fal_tools.py` | `fal-ai/clarity-upscaler` | Change `FAL_CLARITY_MODEL` |
+| FLUX 2 Pro model | `fal_tools.py` | `fal-ai/flux-2-pro` | Change `FAL_FLUX2_PRO_MODEL` |
+| NSFW checker model | `fal_tools.py` | `fal-ai/x-ailab/nsfw` | Change `FAL_NSFW_MODEL` |
 
 ---
 
@@ -780,7 +852,7 @@ python-game-vault/
 ├── providers.py      — Claude + Grok provider implementations + factory
 ├── image_gen.py      — Grok Aurora image generation + vault prompt builder
 ├── video_gen.py      — Grok Aurora video generation, editing + vault prompt builder
-├── fal_tools.py      — fal.ai tool integrations (upscaling, enhancement)
+├── fal_tools.py      — fal.ai tool integrations (upscaling, FLUX 2 Pro, NSFW checking)
 ├── models.py         — Pydantic request/response models
 ├── embeddings.py     — Sentence-transformer vault index
 ├── staging.py        — In-memory staging area + session store

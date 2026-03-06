@@ -34,7 +34,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from agent import RPGAgent
 from embeddings import VaultIndex
-from fal_tools import clarity_upscale, flux2_pro_generate
+from fal_tools import clarity_upscale, flux2_pro_generate, nsfw_check
 from image_gen import build_vault_prompt, generate_images
 from video_gen import (
     build_vault_video_prompt,
@@ -63,6 +63,9 @@ from models import (
     VaultVideoRequest,
     ClarityUpscaleRequest,
     ClarityUpscaleResponse,
+    NsfwCheckRequest,
+    NsfwCheckResponse,
+    NsfwCheckResult,
 )
 from providers import ProviderName, create_provider
 from staging import SessionStore, StagingArea
@@ -1065,4 +1068,81 @@ async def enhance_upscale(request: ClarityUpscaleRequest):
         raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
         logger.exception("Clarity upscale failed")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# POST /images/check-nsfw  — NSFW / SFW classifier
+# ---------------------------------------------------------------------------
+
+@app.post(
+    "/images/check-nsfw",
+    response_model=NsfwCheckResponse,
+    summary="Classify images as NSFW or SFW",
+    tags=["Image Moderation"],
+)
+async def images_check_nsfw(request: NsfwCheckRequest):
+    """
+    Binary NSFW / SFW classification for up to 10 images.
+
+    Uses `fal-ai/x-ailab/nsfw` — a high-confidence binary classifier.
+    Pass a list of image URLs and receive a per-image verdict.
+
+    **Intended workflow:**
+
+    Generate images with relaxed safety settings (`safety_tolerance: "5"`,
+    `enable_safety_checker: false`), then pass the resulting URLs here to
+    identify any flagged images before surfacing them to end-users or storing
+    them in your vault.
+
+    **Requires** `FAL_KEY` to be set.
+
+    Example:
+    ```json
+    {
+      "image_urls": [
+        "https://storage.fal.media/...",
+        "https://storage.fal.media/..."
+      ]
+    }
+    ```
+
+    Response:
+    ```json
+    {
+      "results": [
+        { "image_url": "https://...", "is_nsfw": false },
+        { "image_url": "https://...", "is_nsfw": true }
+      ],
+      "total_checked": 2,
+      "nsfw_count": 1,
+      "sfw_count": 1
+    }
+    ```
+    """
+    if not os.getenv("FAL_KEY"):
+        raise HTTPException(status_code=400, detail="FAL_KEY is not set.")
+
+    try:
+        raw = await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: nsfw_check(request.image_urls),
+        )
+
+        results = [NsfwCheckResult(**r) for r in raw]
+        nsfw_count = sum(1 for r in results if r.is_nsfw)
+
+        return NsfwCheckResponse(
+            results=results,
+            total_checked=len(results),
+            nsfw_count=nsfw_count,
+            sfw_count=len(results) - nsfw_count,
+        )
+
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        logger.exception("NSFW check failed")
         raise HTTPException(status_code=500, detail=str(e))

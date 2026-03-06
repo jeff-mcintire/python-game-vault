@@ -58,6 +58,14 @@ Implemented tools
       Environments/scenes  → creativity 0.4–0.6, resemblance 0.4–0.6
       Maps / diagrams      → creativity 0.1, resemblance 0.9
 
+  nsfw_check(image_urls)
+    fal-ai/x-ailab/nsfw
+    Binary NSFW / SFW classifier.  Pass up to 10 image URLs and receive a
+    list of booleans — True = NSFW, False = SFW — one per image.
+    Useful for post-generation moderation: generate with relaxed safety
+    settings, then gate or flag any images the checker marks as explicit
+    before surfacing them to end-users.
+
 """
 
 import logging
@@ -66,8 +74,9 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-FAL_CLARITY_MODEL  = "fal-ai/clarity-upscaler"
+FAL_CLARITY_MODEL   = "fal-ai/clarity-upscaler"
 FAL_FLUX2_PRO_MODEL = "fal-ai/flux-2-pro"
+FAL_NSFW_MODEL      = "fal-ai/x-ailab/nsfw"
 
 # ---------------------------------------------------------------------------
 # Aspect-ratio translation: "16:9" style → FLUX image_size enum
@@ -295,5 +304,75 @@ def clarity_upscale(
         f"Clarity upscale done | "
         f"{output['width']}x{output['height']} "
         f"({(output['file_size'] or 0) // 1024} KB) | {output['image_url'][:60]}…"
+    )
+    return output
+
+
+# ---------------------------------------------------------------------------
+# NSFW Checker
+# ---------------------------------------------------------------------------
+
+def nsfw_check(image_urls: list[str]) -> list[dict]:
+    """
+    Run binary NSFW / SFW classification on up to 10 images.
+
+    Uses fal-ai/x-ailab/nsfw — a high-confidence binary classifier that
+    assigns each image to either SFW or NSFW.  Results are returned in the
+    same order as the input URLs.
+
+    Useful for post-generation moderation: generate images with relaxed
+    safety settings (e.g. safety_tolerance "5" or enable_safety_checker
+    False), then pass the resulting URLs here to identify and handle any
+    flagged images before surfacing them to end-users.
+
+    Parameters
+    ----------
+    image_urls  List of publicly accessible image URLs or base64 data URIs.
+                Maximum 10 images per call.  If more than 10 are provided
+                the API only checks the first 10 — this function raises a
+                ValueError instead to keep results predictable.
+
+    Returns
+    -------
+    list[dict]  One dict per image, in input order:
+        {
+            "image_url":  str,   # the URL that was checked
+            "is_nsfw":    bool,  # True = NSFW, False = SFW
+        }
+
+    Raises
+    ------
+    ValueError   if more than 10 URLs are provided.
+    RuntimeError if FAL_KEY is not set or fal-client is not installed.
+    """
+    if len(image_urls) > 10:
+        raise ValueError(
+            f"fal-ai/x-ailab/nsfw supports a maximum of 10 images per call "
+            f"({len(image_urls)} provided)."
+        )
+
+    fal_client = _get_fal_client()
+
+    logger.info(f"NSFW check | {len(image_urls)} image(s)")
+
+    result = fal_client.run(
+        FAL_NSFW_MODEL,
+        arguments={"image_urls": image_urls},
+    )
+
+    flags: list[bool] = result.get("has_nsfw_concepts", [])
+
+    # Pad with False if the API returns fewer results than inputs (safety net)
+    while len(flags) < len(image_urls):
+        flags.append(False)
+
+    output = [
+        {"image_url": url, "is_nsfw": flag}
+        for url, flag in zip(image_urls, flags)
+    ]
+
+    nsfw_count = sum(1 for r in output if r["is_nsfw"])
+    logger.info(
+        f"NSFW check done | {nsfw_count}/{len(image_urls)} flagged as NSFW"
     )
     return output

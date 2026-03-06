@@ -501,3 +501,36 @@ class ClarityUpscaleResponse(BaseModel):
     seed: Optional[int]     # seed used for reproducibility
     source_url: str         # the original image that was upscaled
     upscale_factor: float   # scale factor used
+
+
+# ---------------------------------------------------------------------------
+# NSFW Check  (POST /images/check-nsfw)
+# ---------------------------------------------------------------------------
+
+class NsfwCheckRequest(BaseModel):
+    image_urls: list[str]
+    """
+    List of image URLs to classify.  Maximum 10 per request.
+    Accepts public URLs or base64 data URIs.
+    """
+
+    @field_validator("image_urls")
+    @classmethod
+    def validate_image_urls(cls, v: list[str]) -> list[str]:
+        if len(v) == 0:
+            raise ValueError("image_urls must contain at least one URL")
+        if len(v) > 10:
+            raise ValueError("image_urls must contain 10 or fewer URLs")
+        return v
+
+
+class NsfwCheckResult(BaseModel):
+    image_url: str   # the URL that was checked
+    is_nsfw: bool    # True = NSFW, False = SFW
+
+
+class NsfwCheckResponse(BaseModel):
+    results: list[NsfwCheckResult]
+    total_checked: int
+    nsfw_count: int    # how many images were flagged
+    sfw_count: int     # how many images were clean
