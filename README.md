@@ -199,3 +199,14 @@ Triggers a full index rebuild in the background.
 | `EMBED_CHARS` | `embeddings.py` | 2000 | Chars embedded per file |
 | `POLL_INTERVAL_SECONDS` | `watcher.py` | 30 | NAS polling frequency |
 | Claude model | `agent.py` | `claude-opus-4-5` | Swap to sonnet for cheaper/faster |
+
+## How to Use Grok
+
+To use Grok, just add XAI_API_KEY to .env and pass "provider": "grok" in your chat request. Both providers can be live simultaneously.
+```aiignore
+{
+  "provider": "grok",
+  "prompt": "who are the Hollowell's",
+  "top_k": 10
+}
+```

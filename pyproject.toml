@@ -1,11 +1,11 @@
 [project]
-name = "python-game-vault"
-version = "0.1.0"
-description = "Claude-powered backend for managing an Obsidian RPG campaign vault"
-readme = "README.md"
+name = "rpg-vault-agent"
+version = "0.2.0"
+description = "Claude/Grok-powered backend for managing an Obsidian RPG campaign vault"
 requires-python = ">=3.14"
 dependencies = [
     "anthropic>=0.40.0",
+    "openai>=1.50.0",
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.30.0",
     "python-frontmatter>=1.1.0",
@@ -16,8 +16,21 @@ dependencies = [
     "pydantic>=2.0.0",
 ]
 
-[tool.uv]
-dev-dependencies = [
+# Build system is required so `uv sync` installs the project itself as an
+# editable package.  Without this, the `providers/` subdirectory is not on
+# sys.path in uvicorn's reloader subprocess, causing ModuleNotFoundError.
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# Tell hatchling which packages to include when installing.
+# This makes the providers/ sub-package available everywhere Python runs.
+[tool.hatch.build.targets.wheel]
+packages = ["providers"]
+
+# dev dependencies — PEP 735 syntax (replaces deprecated [tool.uv.dev-dependencies])
+[dependency-groups]
+dev = [
     "httpx>=0.27.0",
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",

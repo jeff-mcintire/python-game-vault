@@ -1,24 +1,27 @@
 """
 main.py — FastAPI application entry point.
 
-Endpoints:
-  POST /chat                       — Run agent (staged, nothing written yet)
-  POST /review/{session_id}/confirm  — Commit staged changes to vault
-  POST /review/{session_id}/modify   — Re-run agent with user feedback
-  DELETE /review/{session_id}        — Discard staged changes
+Workflow:
+  1.  POST /chat                     → PendingReview (staged, nothing written)
+  2a. POST /review/{id}/confirm      → CommitResponse (writes to disk)
+  2b. POST /review/{id}/modify       → PendingReview (re-runs with feedback)
+  2c. DELETE /review/{id}            → DiscardResponse (drops session)
 
-  GET  /status                     — Index health check
-  GET  /files                      — List / search vault files
-  POST /reindex                    — Trigger a full index rebuild
+Provider selection:
+  Every /chat request includes a "provider" field: "claude" (default) or "grok".
+  An optional "model" field overrides the provider's default model.
+  /review/{id}/modify also accepts provider/model to switch mid-review.
 
-Workflow
-────────
-  1.  POST /chat  →  PendingReview   (session_id + list of StagedChanges with diffs)
-  2a. POST /review/{id}/confirm      →  CommitResponse  (writes to disk)
-  2b. POST /review/{id}/modify       →  PendingReview   (re-runs agent, returns new staged changes)
-  2c. DELETE /review/{id}            →  DiscardResponse (drops the session, nothing written)
+Required env vars:
+  ANTHROPIC_API_KEY   — for Claude
+  XAI_API_KEY         — for Grok
+  VAULT_PATH          — path to Obsidian vault
 """
 
+# Path bootstrap - must be the first executable code in this file.
+# When uvicorn --reload spawns a subprocess on Windows it does NOT inherit
+# the parent sys.path, so subdirectory packages (providers/) are invisible.
+# Inserting the project root here fixes it for every import that follows.
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -42,6 +45,7 @@ from models import (
     PendingReview,
     StagedChangeResponse,
 )
+from providers import ProviderName, create_provider
 from staging import SessionStore, StagingArea
 from vault import VaultManager
 from watcher import start_watcher
@@ -84,17 +88,22 @@ async def lifespan(app: FastAPI):
     global _vault, _index, _agent, _watcher
 
     vault_path = os.getenv("VAULT_PATH")
-    api_key = os.getenv("ANTHROPIC_API_KEY")
     cache_path = os.getenv("INDEX_CACHE_PATH", ".vault_index.pkl")
 
     if not vault_path:
         raise RuntimeError("VAULT_PATH environment variable is not set.")
-    if not api_key:
-        raise RuntimeError("ANTHROPIC_API_KEY environment variable is not set.")
+
+    # Validate at least one provider key is present
+    has_claude = bool(os.getenv("ANTHROPIC_API_KEY"))
+    has_grok = bool(os.getenv("XAI_API_KEY"))
+    if not has_claude and not has_grok:
+        raise RuntimeError(
+            "No LLM provider configured. Set ANTHROPIC_API_KEY and/or XAI_API_KEY."
+        )
 
     _vault = VaultManager(vault_path)
     _index = VaultIndex(cache_path=cache_path)
-    _agent = RPGAgent(_vault, _index, api_key)
+    _agent = RPGAgent(_vault, _index)   # agent is provider-agnostic
 
     if not _index.load_cache():
         logger.info("No cache found — building embedding index from scratch…")
@@ -108,7 +117,12 @@ async def lifespan(app: FastAPI):
     _watcher = start_watcher(_vault, _index)
     _status["watching"] = True
 
-    logger.info("RPG Vault Agent is ready.")
+    available = []
+    if has_claude:
+        available.append("claude")
+    if has_grok:
+        available.append("grok")
+    logger.info(f"RPG Vault Agent ready. Available providers: {', '.join(available)}")
     yield
 
     if _watcher:
@@ -123,8 +137,11 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="RPG Vault Agent",
-    description="Claude-powered backend for managing your Obsidian RPG campaign vault.",
-    version="2.0.0",
+    description=(
+        "Claude/Grok-powered backend for managing your Obsidian RPG campaign vault. "
+        "Choose your LLM provider per request via the `provider` field."
+    ),
+    version="3.0.0",
     lifespan=lifespan,
 )
 
@@ -157,10 +174,11 @@ def _require_session(session_id: str) -> StagingArea:
 
 
 def _staging_to_response(staging: StagingArea, ops: list[dict]) -> PendingReview:
-    """Convert a StagingArea into the PendingReview response model."""
     return PendingReview(
         session_id=staging.session_id,
         agent_response=staging.agent_response,
+        provider=ProviderName(staging.provider_name),
+        model=staging.model_used,
         files_referenced=staging.files_referenced,
         changes=[
             StagedChangeResponse(
@@ -176,8 +194,27 @@ def _staging_to_response(staging: StagingArea, ops: list[dict]) -> PendingReview
     )
 
 
+def _run_agent(
+    prompt: str,
+    provider_name: ProviderName,
+    model: str | None,
+    top_k: int,
+    staging: StagingArea,
+) -> dict:
+    """Instantiate the requested provider and run the agent."""
+    try:
+        provider = create_provider(provider_name, model=model)
+    except RuntimeError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    staging.provider_name = provider_name.value
+    staging.model_used = provider.model
+
+    return _agent.run(prompt, provider=provider, top_k=top_k, staging=staging)
+
+
 # ---------------------------------------------------------------------------
-# POST /chat — Run the agent (staged)
+# POST /chat
 # ---------------------------------------------------------------------------
 
 @app.post(
@@ -187,39 +224,41 @@ def _staging_to_response(staging: StagingArea, ops: list[dict]) -> PendingReview
 )
 async def chat(request: ChatRequest):
     """
-    Runs the agent against your prompt.  **Nothing is written to disk.**
+    Runs the agent against your prompt using the specified provider.
+    **Nothing is written to disk.**
 
-    Returns a `PendingReview` containing:
-    - `session_id`  — use this in subsequent `/review/*` calls
-    - `changes`     — each proposed file operation with a unified diff
-    - `agent_response` — Claude's plain-English summary of what it plans to do
+    - `provider`: `"claude"` (default) or `"grok"`
+    - `model`: optional override (e.g. `"grok-3-mini"`, `"claude-sonnet-4-5"`)
 
-    Next steps:
-    - **Confirm** → `POST /review/{session_id}/confirm`
-    - **Request changes** → `POST /review/{session_id}/modify`
-    - **Discard** → `DELETE /review/{session_id}`
+    Returns a `PendingReview` with a `session_id` for confirm/modify/discard.
     """
     _require_agent()
     try:
         staging = StagingArea(original_prompt=request.prompt)
-        result = _agent.run(request.prompt, top_k=request.top_k, staging=staging)
-
+        result = _run_agent(
+            prompt=request.prompt,
+            provider_name=request.provider,
+            model=request.model,
+            top_k=request.top_k,
+            staging=staging,
+        )
         staging.agent_response = result["response"]
         staging.files_referenced = result["files_referenced"]
         _sessions.put(staging)
-
         logger.info(
-            f"Staged {len(staging.changes)} change(s) — session {staging.session_id}"
+            f"Staged {len(staging.changes)} change(s) via {staging.provider_name}/{staging.model_used}"
+            f" — session {staging.session_id}"
         )
         return _staging_to_response(staging, result["operations_performed"])
-
+    except HTTPException:
+        raise
     except Exception as e:
         logger.exception("Agent error during staging")
         raise HTTPException(status_code=500, detail=str(e))
 
 
 # ---------------------------------------------------------------------------
-# POST /review/{session_id}/confirm — Commit to disk
+# POST /review/{session_id}/confirm
 # ---------------------------------------------------------------------------
 
 @app.post(
@@ -228,49 +267,35 @@ async def chat(request: ChatRequest):
     summary="Commit all staged changes to the vault",
 )
 async def confirm(session_id: str):
-    """
-    Writes all staged changes to the vault and cleans up the session.
-
-    After this call the files are on disk and the index is updated.
-    """
     _require_agent()
     staging = _require_session(session_id)
 
     if not staging.has_changes:
         _sessions.discard(session_id)
-        return CommitResponse(
-            session_id=session_id,
-            files_committed=[],
-            message="No changes to commit.",
-        )
+        return CommitResponse(session_id=session_id, files_committed=[], message="No changes to commit.")
 
     try:
         committed = staging.commit(_vault)
-
-        # Update the embedding index for each committed file
         for rel_path in committed:
             try:
                 full_text = _vault.read_relative(rel_path)
                 _index.update_file(rel_path, full_text)
             except Exception:
-                pass  # delete ops won't be readable; that's fine
-
+                pass  # deleted files won't be readable — that's fine
         _sessions.discard(session_id)
         logger.info(f"Committed {len(committed)} file(s) from session {session_id}")
-
         return CommitResponse(
             session_id=session_id,
             files_committed=committed,
             message=f"Successfully committed {len(committed)} file(s) to vault.",
         )
-
     except Exception as e:
         logger.exception(f"Commit failed for session {session_id}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
 # ---------------------------------------------------------------------------
-# POST /review/{session_id}/modify — Re-run with feedback
+# POST /review/{session_id}/modify
 # ---------------------------------------------------------------------------
 
 @app.post(
@@ -280,52 +305,52 @@ async def confirm(session_id: str):
 )
 async def modify(session_id: str, request: ModifyRequest):
     """
-    Discards the current staged changes and re-runs the agent with your
-    original prompt **plus** your modification feedback.
+    Discards the current staged changes and re-runs with your original
+    prompt plus your feedback.
 
-    Returns a fresh `PendingReview` with a new `session_id`.
-    You can confirm, modify again, or discard as normal.
-
-    Example feedback:
-    - *"Give the blacksmith a backstory as a former soldier"*
-    - *"Use the Eastwall district instead of Stormhaven"*
-    - *"Add a rival NPC who runs a competing shop"*
+    Optionally switch provider or model for the re-run:
+    ```json
+    { "feedback": "Make him a former soldier", "provider": "grok", "model": "grok-3-mini" }
+    ```
     """
     _require_agent()
     staging = _require_session(session_id)
 
-    # Build a combined prompt: original request + user feedback
     combined_prompt = (
-        f"{staging.original_prompt}\n\n"
-        f"---\n\n"
-        f"**Revision request:** {request.feedback}"
+        f"{staging.original_prompt}\n\n---\n\n**Revision request:** {request.feedback}"
     )
 
+    # Use the requested provider/model, or fall back to what the session used
+    provider_name = request.provider or ProviderName(staging.provider_name)
+    model = request.model  # None = use provider default
+
     try:
-        # Discard old session
         _sessions.discard(session_id)
-
-        # Fresh staging area with the combined prompt
         new_staging = StagingArea(original_prompt=combined_prompt)
-        result = _agent.run(combined_prompt, staging=new_staging)
-
+        result = _run_agent(
+            prompt=combined_prompt,
+            provider_name=provider_name,
+            model=model,
+            top_k=10,
+            staging=new_staging,
+        )
         new_staging.agent_response = result["response"]
         new_staging.files_referenced = result["files_referenced"]
         _sessions.put(new_staging)
-
         logger.info(
-            f"Modify re-run → {len(new_staging.changes)} staged change(s) "
-            f"— new session {new_staging.session_id}"
+            f"Modify re-run via {new_staging.provider_name}/{new_staging.model_used}"
+            f" → {len(new_staging.changes)} staged change(s) — session {new_staging.session_id}"
         )
         return _staging_to_response(new_staging, result["operations_performed"])
-
+    except HTTPException:
+        raise
     except Exception as e:
         logger.exception("Agent error during modify")
         raise HTTPException(status_code=500, detail=str(e))
 
 
 # ---------------------------------------------------------------------------
-# DELETE /review/{session_id} — Discard
+# DELETE /review/{session_id}
 # ---------------------------------------------------------------------------
 
 @app.delete(
@@ -334,15 +359,9 @@ async def modify(session_id: str, request: ModifyRequest):
     summary="Discard staged changes without writing anything",
 )
 async def discard(session_id: str):
-    """
-    Drops the staging session.  Nothing is written to disk.
-    """
     found = _sessions.discard(session_id)
     if not found:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Session '{session_id}' not found or already discarded.",
-        )
+        raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found.")
     logger.info(f"Discarded session {session_id}")
     return DiscardResponse(
         session_id=session_id,
@@ -354,7 +373,7 @@ async def discard(session_id: str):
 # GET /status
 # ---------------------------------------------------------------------------
 
-@app.get("/status", response_model=IndexStatus, summary="Index + watcher health")
+@app.get("/status", response_model=IndexStatus)
 async def status():
     if _vault is None:
         raise HTTPException(status_code=503, detail="Not initialised.")
@@ -364,18 +383,37 @@ async def status():
 
 
 # ---------------------------------------------------------------------------
+# GET /providers
+# ---------------------------------------------------------------------------
+
+@app.get("/providers", summary="List configured LLM providers")
+async def providers():
+    """Returns which providers are available based on env vars set."""
+    available = {}
+    if os.getenv("ANTHROPIC_API_KEY"):
+        available["claude"] = {
+            "default_model": "claude-opus-4-5",
+            "other_models": ["claude-sonnet-4-5", "claude-haiku-4-5-20251001"],
+        }
+    if os.getenv("XAI_API_KEY"):
+        available["grok"] = {
+            "default_model": "grok-3",
+            "other_models": ["grok-3-mini", "grok-2"],
+        }
+    return {"providers": available}
+
+
+# ---------------------------------------------------------------------------
 # GET /files
 # ---------------------------------------------------------------------------
 
-@app.get("/files", response_model=FileListResponse, summary="List or search vault files")
+@app.get("/files", response_model=FileListResponse)
 async def list_files(query: str = ""):
     if _index is None:
         raise HTTPException(status_code=503, detail="Not initialised.")
     if query:
         results = _index.search(query, top_k=20)
-        return FileListResponse(
-            files=[FileSearchResult(path=p, score=s) for p, s in results]
-        )
+        return FileListResponse(files=[FileSearchResult(path=p, score=s) for p, s in results])
     return FileListResponse(
         files=[FileSearchResult(path=p, score=1.0) for p in _index.file_paths]
     )
@@ -385,7 +423,7 @@ async def list_files(query: str = ""):
 # POST /reindex
 # ---------------------------------------------------------------------------
 
-@app.post("/reindex", summary="Trigger a full index rebuild")
+@app.post("/reindex")
 async def reindex(background_tasks: BackgroundTasks):
     if _vault is None or _index is None:
         raise HTTPException(status_code=503, detail="Not initialised.")

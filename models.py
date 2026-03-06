@@ -1,5 +1,6 @@
 from typing import Literal, Optional
 from pydantic import BaseModel
+from providers import ProviderName
 
 
 # ---------------------------------------------------------------------------
@@ -19,6 +20,8 @@ class OperationRecord(BaseModel):
 class ChatRequest(BaseModel):
     prompt: str
     top_k: int = 10
+    provider: ProviderName = ProviderName.CLAUDE   # "claude" or "grok"
+    model: Optional[str] = None                    # override default model for chosen provider
 
 
 # ---------------------------------------------------------------------------
@@ -44,9 +47,11 @@ class PendingReview(BaseModel):
     and let the user confirm, modify, or discard.
     """
     session_id: str
-    agent_response: str                       # Claude's plain-English summary
+    agent_response: str
+    provider: ProviderName                        # which provider was used
+    model: str                                    # which model was used
     files_referenced: list[str]
-    changes: list[StagedChangeResponse]       # all proposed file operations
+    changes: list[StagedChangeResponse]
     operations_performed: list[OperationRecord]
 
 
@@ -55,7 +60,9 @@ class PendingReview(BaseModel):
 # ---------------------------------------------------------------------------
 
 class ModifyRequest(BaseModel):
-    feedback: str    # user's modification instructions
+    feedback: str
+    provider: Optional[ProviderName] = None   # optionally switch provider for the re-run
+    model: Optional[str] = None               # optionally switch model for the re-run
 
 
 class CommitResponse(BaseModel):

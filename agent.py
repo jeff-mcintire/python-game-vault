@@ -1,27 +1,29 @@
 """
 agent.py — The core RPG agent.
 
+Fully provider-agnostic: works with Claude, Grok, or any future LLMProvider.
+
 Supports two execution modes:
-
   dry_run=True  (default for /chat)
-    All write operations are captured in a StagingArea instead of
-    being committed to disk.  Reads are served transparently from
-    staging-then-vault so the agent can reference files it just
-    proposed to create.  Returns the StagingArea for user review.
-
+    All writes go to a StagingArea for user review before anything hits disk.
   dry_run=False
-    Write operations go directly to the vault (used internally by
-    /review/{id}/confirm after the user approves).
+    Writes go directly to vault (used after /review/{id}/confirm).
 """
 
 import logging
 from typing import Optional
 
-import anthropic
-
-from embeddings import VaultIndex
+# Ensure the project root is on sys.path so that `providers` is importable
+# when uvicorn spawns a reload subprocess on Windows (the subprocess does not
+# inherit the parent's working directory in sys.path).
+from providers import (
+    LLMProvider,
+    ToolDefinition,
+    ToolResult,
+)
 from staging import StagingArea
 from vault import VaultManager
+from embeddings import VaultIndex
 
 logger = logging.getLogger(__name__)
 
@@ -44,9 +46,7 @@ Your job is to fulfill the request by calling the provided tools to create, upda
 or append to vault files.  After all tool calls are complete, write a brief,
 friendly summary of exactly what you did.
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 OBSIDIAN FORMATTING RULES
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 • Always include YAML frontmatter with at least: tags, type, and status.
 • Use [[WikiLinks]] to cross-reference related notes.
 • Use consistent #tags.
@@ -72,17 +72,17 @@ IMPORTANT RULES
 
 
 # ---------------------------------------------------------------------------
-# Tool definitions
+# Tool definitions  (provider-agnostic ToolDefinition objects)
 # ---------------------------------------------------------------------------
 
-TOOLS: list[dict] = [
-    {
-        "name": "create_file",
-        "description": (
+TOOLS: list[ToolDefinition] = [
+    ToolDefinition(
+        name="create_file",
+        description=(
             "Create a brand-new markdown file in the vault. "
             "Use for new characters, locations, NPCs, factions, shops, lore entries, etc."
         ),
-        "input_schema": {
+        input_schema={
             "type": "object",
             "properties": {
                 "relative_path": {
@@ -100,14 +100,14 @@ TOOLS: list[dict] = [
             },
             "required": ["relative_path", "content"],
         },
-    },
-    {
-        "name": "update_file",
-        "description": (
+    ),
+    ToolDefinition(
+        name="update_file",
+        description=(
             "Completely replace the content of an existing file. "
             "Use for major rewrites — e.g. updating a character sheet after significant events."
         ),
-        "input_schema": {
+        input_schema={
             "type": "object",
             "properties": {
                 "relative_path": {"type": "string"},
@@ -116,14 +116,14 @@ TOOLS: list[dict] = [
             },
             "required": ["relative_path", "content"],
         },
-    },
-    {
-        "name": "append_to_file",
-        "description": (
+    ),
+    ToolDefinition(
+        name="append_to_file",
+        description=(
             "Append new content to the end of an existing file without touching what is already there. "
             "Ideal for adding session memories, journal entries, or new inventory items."
         ),
-        "input_schema": {
+        input_schema={
             "type": "object",
             "properties": {
                 "relative_path": {"type": "string"},
@@ -131,121 +131,103 @@ TOOLS: list[dict] = [
             },
             "required": ["relative_path", "content"],
         },
-    },
-    {
-        "name": "delete_file",
-        "description": (
+    ),
+    ToolDefinition(
+        name="delete_file",
+        description=(
             "Delete a file from the vault. "
             "Only use when the user has explicitly requested deletion."
         ),
-        "input_schema": {
+        input_schema={
             "type": "object",
             "properties": {
                 "relative_path": {"type": "string"},
             },
             "required": ["relative_path"],
         },
-    },
-    {
-        "name": "read_file",
-        "description": (
+    ),
+    ToolDefinition(
+        name="read_file",
+        description=(
             "Read the full content of a specific vault file. "
             "Use when you need details about a file that was NOT included in the context."
         ),
-        "input_schema": {
+        input_schema={
             "type": "object",
             "properties": {
                 "relative_path": {"type": "string"},
             },
             "required": ["relative_path"],
         },
-    },
+    ),
 ]
 
 
 # ---------------------------------------------------------------------------
-# Agent class
+# Agent
 # ---------------------------------------------------------------------------
 
 class RPGAgent:
-    def __init__(self, vault: VaultManager, index: VaultIndex, api_key: str):
+    def __init__(self, vault: VaultManager, index: VaultIndex):
         self.vault = vault
         self.index = index
-        self.client = anthropic.Anthropic(api_key=api_key)
-
-    # ------------------------------------------------------------------
-    # Public entry point
-    # ------------------------------------------------------------------
 
     def run(
         self,
         prompt: str,
+        provider: LLMProvider,
         top_k: int = 10,
         staging: Optional[StagingArea] = None,
     ) -> dict:
         """
-        Execute an agent loop for the given prompt.
+        Execute the agent loop using the given provider.
 
         Args:
-            prompt:  Natural-language request.
-            top_k:   Number of relevant files to pull into context.
-            staging: If provided, all write operations are captured here
-                     instead of being committed to disk (dry-run mode).
-                     If None, writes go directly to the vault.
+            prompt:   Natural-language request.
+            provider: LLMProvider instance (Claude or Grok).
+            top_k:    Number of relevant files to pull into context.
+            staging:  If provided, writes are staged (dry-run).
+                      If None, writes go directly to vault.
         """
         dry_run = staging is not None
 
         relevant_files = self.index.search(prompt, top_k=top_k)
         context = self._build_context(relevant_files)
-
-        messages: list[dict] = [
-            {
-                "role": "user",
-                "content": f"{context}\n\n---\n\n## User Request\n\n{prompt}",
-            }
-        ]
+        user_message = f"{context}\n\n---\n\n## User Request\n\n{prompt}"
 
         files_referenced = [path for path, _ in relevant_files]
         files_modified: list[str] = []
         operations: list[dict] = []
         final_response = ""
 
-        while True:
-            response = self.client.messages.create(
-                model="claude-opus-4-5",
-                max_tokens=4096,
-                system=SYSTEM_PROMPT,
-                tools=TOOLS,
-                messages=messages,
-            )
+        # Start the conversation
+        turn = provider.start(SYSTEM_PROMPT, user_message, TOOLS)
 
-            tool_calls = []
-            for block in response.content:
-                if block.type == "text":
-                    final_response = block.text
-                elif block.type == "tool_use":
-                    tool_calls.append(block)
+        # Agentic tool-use loop
+        while not turn.is_done:
+            final_response = turn.text or final_response
 
-            if not tool_calls or response.stop_reason == "end_turn":
-                break
-
-            tool_results = []
-            for tc in tool_calls:
+            # Execute each tool call
+            tool_results: list[ToolResult] = []
+            for tc in turn.tool_calls:
                 result_text, meta = self._execute_tool(
                     tc.name, tc.input, staging=staging, dry_run=dry_run
                 )
-                tool_results.append(
-                    {"type": "tool_result", "tool_use_id": tc.id, "content": result_text}
-                )
+                tool_results.append(ToolResult(tool_call_id=tc.id, content=result_text))
                 operations.append(meta)
+
                 op = meta.get("operation", "")
                 path = meta.get("path")
                 if op in ("create", "update", "append", "delete") and path:
                     if path not in files_modified:
                         files_modified.append(path)
 
-            messages.append({"role": "assistant", "content": response.content})
-            messages.append({"role": "user", "content": tool_results})
+            # Feed results back and get next turn
+            turn = provider.continue_with_results(tool_results)
+
+        # Final text from the last turn
+        if turn.text:
+            final_response = turn.text
 
         return {
             "response": final_response,
@@ -272,7 +254,7 @@ class RPGAgent:
         return "\n".join(parts)
 
     # ------------------------------------------------------------------
-    # Tool execution
+    # Tool execution  (identical regardless of provider)
     # ------------------------------------------------------------------
 
     def _execute_tool(
