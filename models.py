@@ -323,3 +323,107 @@ class VideoStatusResponse(BaseModel):
     video_url: Optional[str] = None
     duration: Optional[int] = None
     moderated: Optional[bool] = None
+
+
+# ---------------------------------------------------------------------------
+# fal.ai tools  (POST /enhance/upscale)
+# ---------------------------------------------------------------------------
+
+class ClarityUpscaleRequest(BaseModel):
+    """
+    Upscale an image using fal-ai/clarity-upscaler.
+
+    Supply any publicly accessible image URL — including the temporary URLs
+    returned by the Grok image generation endpoints.  The output is stored
+    on fal.media and does not expire.
+    """
+    image_url: str
+    """
+    Public URL or base64 data URI of the image to upscale.
+    Accepts xAI temporary URLs, fal.media URLs, or any direct image link.
+    """
+
+    upscale_factor: float = 2.0
+    """
+    Scale multiplier.  2 doubles the resolution; 4 quadruples it.
+    Default: 2.
+    """
+
+    prompt: str = "masterpiece, best quality, highres"
+    """
+    Steers what detail gets added during the diffusion upscale pass.
+    Pass the original image generation prompt for best results.
+    Default: "masterpiece, best quality, highres"
+    """
+
+    negative_prompt: str = "(worst quality, low quality, normal quality:2)"
+    """What to avoid in the added detail."""
+
+    creativity: float = 0.35
+    """
+    0–1.  How much the model deviates from the original image.
+    Low (0.1–0.3) = faithful, minimal invention.
+    High (0.5–0.8) = more invented texture and atmosphere.
+
+    RPG guide:
+      Character portraits  → 0.2–0.3
+      Environments/scenes  → 0.4–0.6
+      Maps / diagrams      → 0.1
+    Default: 0.35
+    """
+
+    resemblance: float = 0.6
+    """
+    0–1.  ControlNet strength — how closely the output tracks the original
+    structure.  Higher = closer to original.  Default: 0.6
+    """
+
+    guidance_scale: float = 4.0
+    """CFG scale — how strictly the model follows the prompt.  Default: 4."""
+
+    num_inference_steps: int = 18
+    """
+    Inference steps.  More steps = higher quality, slower processing.
+    Range: 10–50.  Default: 18 (good balance of speed and quality).
+    """
+
+    seed: Optional[int] = None
+    """Set for reproducible output.  Omit for a random seed."""
+
+    enable_safety_checker: bool = True
+    """
+    Set to false to disable the safety checker.
+    Recommended false for dark fantasy / mature RPG content.
+    """
+
+    @field_validator("creativity", "resemblance")
+    @classmethod
+    def validate_zero_to_one(cls, v: float, info) -> float:
+        if not (0.0 <= v <= 1.0):
+            raise ValueError(f"{info.field_name} must be between 0.0 and 1.0")
+        return v
+
+    @field_validator("upscale_factor")
+    @classmethod
+    def validate_upscale_factor(cls, v: float) -> float:
+        if not (1.0 < v <= 8.0):
+            raise ValueError("upscale_factor must be between 1.0 and 8.0")
+        return v
+
+    @field_validator("num_inference_steps")
+    @classmethod
+    def validate_steps(cls, v: int) -> int:
+        if not (1 <= v <= 100):
+            raise ValueError("num_inference_steps must be between 1 and 100")
+        return v
+
+
+class ClarityUpscaleResponse(BaseModel):
+    image_url: str          # fal.media-hosted output URL (persistent)
+    width: Optional[int]    # output width in pixels
+    height: Optional[int]   # output height in pixels
+    file_size: Optional[int] # output file size in bytes
+    content_type: str = "image/png"
+    seed: Optional[int]     # seed used for reproducibility
+    source_url: str         # the original image that was upscaled
+    upscale_factor: float   # scale factor used

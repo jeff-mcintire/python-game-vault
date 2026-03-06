@@ -1,6 +1,6 @@
 [project]
 name = "rpg-vault-agent"
-version = "0.2.0"
+version = "0.3.0"
 description = "Claude/Grok-powered backend for managing an Obsidian RPG campaign vault"
 requires-python = ">=3.14"
 dependencies = [
@@ -15,6 +15,7 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "pydantic>=2.0.0",
     "requests>=2.31.0",
+    "fal-client>=0.13.1",
 ]
 
 # Build system is required so `uv sync` installs the project itself as an

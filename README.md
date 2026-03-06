@@ -62,7 +62,10 @@ Edit `.env` and set your keys and vault path:
 ```bash
 # LLM Providers — set one or both
 ANTHROPIC_API_KEY=sk-ant-...    # required for Claude
-XAI_API_KEY=xai-...             # required for Grok chat + image generation
+XAI_API_KEY=xai-...             # required for Grok chat + image/video generation
+
+# fal.ai — required for enhancement tools (upscaling, etc.)
+FAL_KEY=...                     # get from fal.ai/dashboard/keys
 
 # Required
 VAULT_PATH=/path/to/your/obsidian/vault
@@ -628,6 +631,80 @@ POST /videos/from-vault
 
 ---
 
+### Enhancement Endpoints (fal.ai)
+
+Enhancement tools use [fal.ai](https://fal.ai) — a serverless GPU inference
+platform hosting 600+ open-source models.  All fal.ai tools share the same
+`FAL_KEY` credential and the same underlying call pattern, so adding more
+tools later requires minimal code.
+
+> Output files are stored on **fal.media** — unlike xAI image/video URLs
+> which expire, fal.media URLs are persistent.
+
+---
+
+#### `POST /enhance/upscale` — Clarity Upscaler
+
+Upscale and sharpen an image using **fal-ai/clarity-upscaler**.
+
+Unlike a simple pixel resize, Clarity runs a Stable Diffusion + ControlNet
+pipeline over the enlarged image, intelligently reconstructing fine detail
+rather than just blowing up existing pixels. The `prompt` parameter guides
+what detail gets added — passing the original generation prompt gives the
+best results.
+
+**Typical workflow:** Generate an image with Grok → immediately pipe the
+URL into this endpoint → get back a permanent, high-res version.
+
+**Request:**
+```json
+{
+  "image_url": "https://images.x.ai/.../grok_output.png",
+  "upscale_factor": 4,
+  "prompt": "A hooded elven rogue on rain-slicked cobblestones — dark fantasy digital art",
+  "creativity": 0.25,
+  "resemblance": 0.75,
+  "enable_safety_checker": false
+}
+```
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `image_url` | string | required | Any public image URL (including temporary xAI URLs) or base64 data URI |
+| `upscale_factor` | float | `2.0` | Scale multiplier (2 = 2× resolution, 4 = 4×) |
+| `prompt` | string | `"masterpiece, best quality, highres"` | Steers what detail gets added — use the original generation prompt |
+| `negative_prompt` | string | `"(worst quality...)"` | What to exclude from added detail |
+| `creativity` | float 0–1 | `0.35` | How much new detail to invent (low = faithful, high = more invented texture) |
+| `resemblance` | float 0–1 | `0.6` | ControlNet strength — how closely to track original structure |
+| `guidance_scale` | float | `4.0` | CFG scale — prompt adherence |
+| `num_inference_steps` | int | `18` | Quality/speed tradeoff (10–50) |
+| `seed` | int \| null | `null` | Set for reproducibility |
+| `enable_safety_checker` | bool | `true` | Set `false` for dark fantasy / mature content |
+
+**Creativity / resemblance guide for RPG art:**
+
+| Content type | `creativity` | `resemblance` |
+|---|---|---|
+| Character portrait | 0.2–0.3 | 0.7–0.8 |
+| Environment / scene | 0.4–0.6 | 0.4–0.6 |
+| Map / diagram | 0.1 | 0.9 |
+
+**Response:**
+```json
+{
+  "image_url": "https://v3b.fal.media/files/.../upscaled.png",
+  "width": 4096,
+  "height": 4096,
+  "file_size": 18204819,
+  "content_type": "image/png",
+  "seed": 42,
+  "source_url": "https://images.x.ai/.../grok_output.png",
+  "upscale_factor": 4.0
+}
+```
+
+---
+
 ## NAS / Network Share Notes
 
 - Mount the share **before** starting the server.
@@ -653,6 +730,7 @@ POST /videos/from-vault
 | Video model | `video_gen.py` | `grok-imagine-video` | Change `VIDEO_MODEL` |
 | Video poll interval | `video_gen.py` | `5` s | Change `DEFAULT_POLL_INTERVAL` |
 | Video timeout | `video_gen.py` | `300` s | Change `DEFAULT_TIMEOUT_SECONDS` |
+| Clarity upscaler model | `fal_tools.py` | `fal-ai/clarity-upscaler` | Change `FAL_CLARITY_MODEL` |
 
 ---
 
@@ -665,6 +743,7 @@ python-game-vault/
 ├── providers.py      — Claude + Grok provider implementations + factory
 ├── image_gen.py      — Grok Aurora image generation + vault prompt builder
 ├── video_gen.py      — Grok Aurora video generation, editing + vault prompt builder
+├── fal_tools.py      — fal.ai tool integrations (upscaling, enhancement)
 ├── models.py         — Pydantic request/response models
 ├── embeddings.py     — Sentence-transformer vault index
 ├── staging.py        — In-memory staging area + session store

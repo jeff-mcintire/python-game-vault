@@ -34,6 +34,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from agent import RPGAgent
 from embeddings import VaultIndex
+from fal_tools import clarity_upscale
 from image_gen import build_vault_prompt, generate_images
 from video_gen import (
     build_vault_video_prompt,
@@ -60,6 +61,8 @@ from models import (
     VideoGenerateResponse,
     VideoStatusResponse,
     VaultVideoRequest,
+    ClarityUpscaleRequest,
+    ClarityUpscaleResponse,
 )
 from providers import ProviderName, create_provider
 from staging import SessionStore, StagingArea
@@ -413,8 +416,8 @@ async def providers():
         }
     if os.getenv("XAI_API_KEY"):
         available["grok"] = {
-            "default_model": "grok-4-1-fast-reasoning",
-            "other_models": ["grok-4-1-fast-non-reasoning", "grok-3-mini", "grok-3"],
+            "default_model": "grok-3",
+            "other_models": ["grok-3-mini", "grok-2"],
         }
     return {"providers": available}
 
@@ -888,4 +891,81 @@ async def videos_status(request_id: str):
         raise
     except Exception as e:
         logger.exception("Video status check failed")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ===========================================================================
+# fal.ai enhancement endpoints
+# ===========================================================================
+
+@app.post(
+    "/enhance/upscale",
+    response_model=ClarityUpscaleResponse,
+    summary="Upscale an image using fal-ai/clarity-upscaler",
+    tags=["Enhancement"],
+)
+async def enhance_upscale(request: ClarityUpscaleRequest):
+    """
+    Upscale and sharpen an image using **fal-ai/clarity-upscaler**.
+
+    Unlike simple pixel scaling, Clarity uses a Stable Diffusion + ControlNet
+    pipeline to reconstruct fine detail at higher resolution.  The result is
+    stored on **fal.media** (persistent URL — no expiry), unlike the temporary
+    URLs returned by Grok image generation.
+
+    **Typical workflow:**
+    1. Generate an image with `POST /images/generate` or `/images/from-vault`
+    2. Pass the returned URL (even the temporary xAI URL) straight into this
+       endpoint — it will be fetched and processed before it expires.
+    3. Get back a permanent, high-resolution version.
+
+    **Tuning `creativity` and `resemblance`:**
+
+    | Content type | creativity | resemblance |
+    |---|---|---|
+    | Character portrait | 0.2–0.3 | 0.7–0.8 |
+    | Environment / scene | 0.4–0.6 | 0.4–0.6 |
+    | Map / diagram | 0.1 | 0.9 |
+
+    Pass the original generation `prompt` for best results — Clarity uses it
+    to guide what new detail gets added during the diffusion pass.
+    """
+    try:
+        result = await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: clarity_upscale(
+                image_url=request.image_url,
+                upscale_factor=request.upscale_factor,
+                prompt=request.prompt,
+                negative_prompt=request.negative_prompt,
+                creativity=request.creativity,
+                resemblance=request.resemblance,
+                guidance_scale=request.guidance_scale,
+                num_inference_steps=request.num_inference_steps,
+                seed=request.seed,
+                enable_safety_checker=request.enable_safety_checker,
+            ),
+        )
+
+        logger.info(
+            f"Upscale complete | {result.get('width')}x{result.get('height')} "
+            f"| {request.upscale_factor}x from {request.image_url[:50]}…"
+        )
+
+        return ClarityUpscaleResponse(
+            image_url=result["image_url"],
+            width=result.get("width"),
+            height=result.get("height"),
+            file_size=result.get("file_size"),
+            content_type=result.get("content_type", "image/png"),
+            seed=result.get("seed"),
+            source_url=request.image_url,
+            upscale_factor=request.upscale_factor,
+        )
+
+    except RuntimeError as e:
+        # Missing FAL_KEY or fal-client not installed — surface clearly
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        logger.exception("Clarity upscale failed")
         raise HTTPException(status_code=500, detail=str(e))
