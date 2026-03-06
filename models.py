@@ -188,3 +188,138 @@ class ImageGenerateResponse(BaseModel):
     style: Optional[str] = None          # style preset used (if any)
     crafted_from_vault: bool = False
     vault_files_used: list[str] = []
+
+
+# ---------------------------------------------------------------------------
+# Video generation  (POST /videos/generate, /videos/edit, /videos/from-vault)
+# ---------------------------------------------------------------------------
+
+from video_gen import VIDEO_ASPECT_RATIOS, VIDEO_RESOLUTIONS
+
+
+class VideoGenerateRequest(BaseModel):
+    """
+    Direct text-to-video (or image-to-video) request.
+
+    Set image_url to animate a still image instead of generating from text.
+    """
+    prompt: str
+    duration: int = 8
+    """
+    Video length in seconds.  Range: 1–15.  Default: 8.
+    Ignored when editing an existing video (the output matches the input length).
+    """
+    aspect_ratio: str = "16:9"
+    """
+    Video proportions.  One of: 16:9 | 9:16 | 4:3 | 3:4 | 1:1.
+    Default: 16:9 (landscape widescreen).
+    """
+    resolution: str = "720p"
+    """Output resolution.  One of: 480p | 720p | 1080p.  Default: 720p."""
+    image_url: Optional[str] = None
+    """
+    Optional.  Provide a publicly accessible image URL to use image-to-video
+    mode — the model will animate this image guided by your prompt.
+    """
+    style: Optional[str] = None
+    """
+    Optional free-text style direction woven into the prompt before submission.
+    Unlike image generation, video style is not a preset list — describe it
+    freely: "slow-motion", "handheld documentary", "sweeping aerial shot", etc.
+    """
+
+    @field_validator("duration")
+    @classmethod
+    def validate_duration(cls, v: int) -> int:
+        if not (1 <= v <= 15):
+            raise ValueError("duration must be between 1 and 15 seconds")
+        return v
+
+    @field_validator("aspect_ratio")
+    @classmethod
+    def validate_aspect_ratio(cls, v: str) -> str:
+        if v not in VIDEO_ASPECT_RATIOS:
+            raise ValueError(f"aspect_ratio must be one of {VIDEO_ASPECT_RATIOS}")
+        return v
+
+    @field_validator("resolution")
+    @classmethod
+    def validate_resolution(cls, v: str) -> str:
+        if v not in VIDEO_RESOLUTIONS:
+            raise ValueError(f"resolution must be one of {VIDEO_RESOLUTIONS}")
+        return v
+
+
+class VideoEditRequest(BaseModel):
+    """
+    Edit an existing video by describing the desired changes.
+    Input video must be ≤ 8.7 seconds.  Output duration matches the input.
+    """
+    video_url: str
+    """Publicly accessible URL to the source video (max 8.7 s)."""
+    prompt: str
+    """Describe what should change: "make the sky stormy", "remove the guards", etc."""
+
+
+class VaultVideoRequest(BaseModel):
+    """
+    Vault-aware video generation.  Describe what you want to see and
+    optionally name specific vault files; Grok will craft a lore-accurate
+    cinematic prompt before generating.
+    """
+    description: str
+    vault_references: list[str] = []
+    """Explicit vault file paths to load (e.g. ["NPCs/Sable.md"])."""
+    top_k: int = 6
+    """Number of additional files to pull via semantic search."""
+    # --- video parameters ---
+    duration: int = 8
+    aspect_ratio: str = "16:9"
+    resolution: str = "720p"
+    style: Optional[str] = None
+    """
+    Free-text style direction for the vault prompt builder.
+    Examples: "epic slow push-in", "handheld night scene", "dark fantasy aerial".
+    """
+
+    @field_validator("duration")
+    @classmethod
+    def validate_duration(cls, v: int) -> int:
+        if not (1 <= v <= 15):
+            raise ValueError("duration must be between 1 and 15 seconds")
+        return v
+
+    @field_validator("aspect_ratio")
+    @classmethod
+    def validate_aspect_ratio(cls, v: str) -> str:
+        if v not in VIDEO_ASPECT_RATIOS:
+            raise ValueError(f"aspect_ratio must be one of {VIDEO_ASPECT_RATIOS}")
+        return v
+
+    @field_validator("resolution")
+    @classmethod
+    def validate_resolution(cls, v: str) -> str:
+        if v not in VIDEO_RESOLUTIONS:
+            raise ValueError(f"resolution must be one of {VIDEO_RESOLUTIONS}")
+        return v
+
+
+class VideoGenerateResponse(BaseModel):
+    video_url: str                       # URL of the generated/edited video
+    prompt_used: str                     # final prompt sent to the model
+    duration: int                        # actual video length in seconds
+    aspect_ratio: str                    # aspect ratio used
+    resolution: str                      # resolution used
+    style: Optional[str] = None          # style direction (if any)
+    request_id: str                      # xAI request ID (for your records)
+    moderated: bool = True               # whether the video passed content moderation
+    crafted_from_vault: bool = False
+    vault_files_used: list[str] = []
+
+
+class VideoStatusResponse(BaseModel):
+    request_id: str
+    status: str                          # "pending" | "done" | "error"
+    video_url: Optional[str] = None
+    duration: Optional[int] = None
+    moderated: Optional[bool] = None

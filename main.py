@@ -22,6 +22,7 @@ Required env vars:
 # When uvicorn --reload spawns a subprocess on Windows it does NOT inherit
 # the parent sys.path, so subdirectory packages (providers/) are invisible.
 # Inserting the project root here fixes it for every import that follows.
+import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -34,6 +35,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from agent import RPGAgent
 from embeddings import VaultIndex
 from image_gen import build_vault_prompt, generate_images
+from video_gen import (
+    build_vault_video_prompt,
+    edit_video,
+    generate_video,
+    poll_video,
+)
 from models import (
     ChatRequest,
     CommitResponse,
@@ -48,6 +55,11 @@ from models import (
     PendingReview,
     StagedChangeResponse,
     VaultImageRequest,
+    VideoEditRequest,
+    VideoGenerateRequest,
+    VideoGenerateResponse,
+    VideoStatusResponse,
+    VaultVideoRequest,
 )
 from providers import ProviderName, create_provider
 from staging import SessionStore, StagingArea
@@ -599,4 +611,281 @@ async def images_from_vault(request: VaultImageRequest):
         raise
     except Exception as e:
         logger.exception("Vault image generation failed")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ===========================================================================
+# Video generation endpoints
+# ===========================================================================
+
+@app.post(
+    "/videos/generate",
+    response_model=VideoGenerateResponse,
+    summary="Generate a video from a prompt (text-to-video or image-to-video)",
+    tags=["Video Generation"],
+)
+async def videos_generate(request: VideoGenerateRequest):
+    """
+    Generate a short video clip using Grok Aurora (grok-imagine-video).
+
+    **Text-to-video** (default): provide a `prompt` and optional `duration`,
+    `aspect_ratio`, and `resolution`.
+
+    **Image-to-video**: also supply `image_url` — the model will animate the
+    still image guided by your prompt.
+
+    This endpoint blocks until the video is ready (polls xAI internally).
+    Typical wait time is 30–90 seconds depending on duration and resolution.
+
+    Videos are returned as temporary xAI-hosted URLs — **download promptly**.
+    Pricing is per second of generated video.
+    """
+    try:
+        final_prompt = request.prompt
+        if request.style:
+            final_prompt = f"{request.prompt.rstrip('.')} — {request.style}"
+
+        result = await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: generate_video(
+                prompt=final_prompt,
+                duration=request.duration,
+                aspect_ratio=request.aspect_ratio,
+                resolution=request.resolution,
+                image_url=request.image_url,
+            ),
+        )
+
+        logger.info(
+            f"Video generated: {result['duration']}s | request_id={result['request_id']}"
+        )
+
+        return VideoGenerateResponse(
+            video_url=result["video_url"],
+            prompt_used=final_prompt,
+            duration=result["duration"],
+            aspect_ratio=request.aspect_ratio,
+            resolution=request.resolution,
+            style=request.style,
+            request_id=result["request_id"],
+            moderated=result["moderated"],
+            crafted_from_vault=False,
+            vault_files_used=[],
+        )
+
+    except TimeoutError as e:
+        raise HTTPException(status_code=504, detail=str(e))
+    except Exception as e:
+        logger.exception("Video generation failed")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post(
+    "/videos/edit",
+    response_model=VideoGenerateResponse,
+    summary="Edit an existing video by describing desired changes",
+    tags=["Video Generation"],
+)
+async def videos_edit(request: VideoEditRequest):
+    """
+    Edit an existing video using Grok Aurora.
+
+    Supply the URL of a video you want to change (must be publicly accessible,
+    max **8.7 seconds**) and a `prompt` describing the desired edits.
+
+    Examples:
+    - `"Make the sky stormy and dark"`
+    - `"Remove the background figures"`
+    - `"Restyle as dark fantasy concept art"`
+    - `"Add falling snow and frost to the scene"`
+
+    Output duration matches the input video's length (not user-configurable
+    in edit mode).  This endpoint blocks until the result is ready.
+    """
+    try:
+        result = await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: edit_video(
+                video_url=request.video_url,
+                prompt=request.prompt,
+            ),
+        )
+
+        logger.info(
+            f"Video edit done: {result['duration']}s | request_id={result['request_id']}"
+        )
+
+        return VideoGenerateResponse(
+            video_url=result["video_url"],
+            prompt_used=request.prompt,
+            duration=result["duration"],
+            aspect_ratio="(from source)",
+            resolution="(from source)",
+            style=None,
+            request_id=result["request_id"],
+            moderated=result["moderated"],
+            crafted_from_vault=False,
+            vault_files_used=[],
+        )
+
+    except TimeoutError as e:
+        raise HTTPException(status_code=504, detail=str(e))
+    except Exception as e:
+        logger.exception("Video edit failed")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post(
+    "/videos/from-vault",
+    response_model=VideoGenerateResponse,
+    summary="Generate a vault-aware video using campaign lore",
+    tags=["Video Generation"],
+)
+async def videos_from_vault(request: VaultVideoRequest):
+    """
+    Vault-aware video generation.
+
+    Describe what you want to see, optionally name specific vault files, and
+    the agent will:
+
+    1. Search the vault semantically for relevant characters, locations, lore.
+    2. Load any explicitly listed `vault_references`.
+    3. Ask Grok to craft a cinematic, lore-accurate video prompt from the context.
+    4. Generate the video from the crafted prompt.
+
+    The response includes `prompt_used` and `vault_files_used` so you can see
+    exactly how the lore was interpreted.
+
+    **Optional `style` field**: free-text camera/style direction that is woven
+    into the vault prompt (e.g. `"slow push-in on a foggy night"`,
+    `"sweeping aerial drone shot"`, `"handheld shaky-cam chase"`).
+    """
+    if _index is None or _vault is None:
+        raise HTTPException(status_code=503, detail="Vault not initialised.")
+
+    try:
+        # 1. Semantic search
+        search_results = _index.search(request.description, top_k=request.top_k)
+        files_used = [path for path, _ in search_results]
+
+        # 2. Explicit vault references (deduplicated)
+        for ref in request.vault_references:
+            if ref not in files_used:
+                files_used.append(ref)
+
+        # 3. Build vault context
+        context_parts = []
+        for path in files_used:
+            try:
+                content = _vault.read_relative(path)
+                context_parts.append(f"### {path}\n{content}")
+            except FileNotFoundError:
+                logger.warning(f"Vault reference not found: {path}")
+
+        vault_context = "\n\n".join(context_parts) if context_parts else "(no vault files found)"
+
+        # 4. Craft cinematic prompt via Grok
+        crafted_prompt = await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: build_vault_video_prompt(
+                description=request.description,
+                vault_context=vault_context,
+                style=request.style,
+            ),
+        )
+
+        # 5. Generate video
+        result = await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: generate_video(
+                prompt=crafted_prompt,
+                duration=request.duration,
+                aspect_ratio=request.aspect_ratio,
+                resolution=request.resolution,
+            ),
+        )
+
+        logger.info(
+            f"Vault video: {len(files_used)} file(s), "
+            f"{result['duration']}s | request_id={result['request_id']}"
+        )
+
+        return VideoGenerateResponse(
+            video_url=result["video_url"],
+            prompt_used=crafted_prompt,
+            duration=result["duration"],
+            aspect_ratio=request.aspect_ratio,
+            resolution=request.resolution,
+            style=request.style,
+            request_id=result["request_id"],
+            moderated=result["moderated"],
+            crafted_from_vault=True,
+            vault_files_used=files_used,
+        )
+
+    except TimeoutError as e:
+        raise HTTPException(status_code=504, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Vault video generation failed")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get(
+    "/videos/status/{request_id}",
+    response_model=VideoStatusResponse,
+    summary="Check the status of a video generation request",
+    tags=["Video Generation"],
+)
+async def videos_status(request_id: str):
+    """
+    Poll the status of a video generation or editing request by its `request_id`.
+
+    Useful if you prefer to submit a job and check back later rather than
+    waiting in the blocking `/videos/generate` or `/videos/edit` responses.
+    You can get a `request_id` from the `request_id` field of any video
+    response — it is always returned even when the request has already
+    completed.
+
+    **Status values:**
+    - `pending` — still processing
+    - `done` — complete; `video_url` is populated
+    - `error` — generation failed
+
+    This endpoint returns the *current* status without waiting — it does not
+    block or retry.
+    """
+    try:
+        resp = await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: __import__("requests").get(
+                f"https://api.x.ai/v1/videos/{request_id}",
+                headers={"Authorization": f"Bearer {os.getenv('XAI_API_KEY', '')}"},
+                timeout=15,
+            ),
+        )
+
+        if not resp.ok:
+            raise HTTPException(
+                status_code=resp.status_code,
+                detail=f"xAI API error: {resp.text[:200]}",
+            )
+
+        data   = resp.json()
+        status = data.get("status", "unknown")
+        video  = data.get("video", {})
+
+        return VideoStatusResponse(
+            request_id=request_id,
+            status=status,
+            video_url=video.get("url") if video else None,
+            duration=video.get("duration") if video else None,
+            moderated=video.get("respect_moderation") if video else None,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Video status check failed")
         raise HTTPException(status_code=500, detail=str(e))

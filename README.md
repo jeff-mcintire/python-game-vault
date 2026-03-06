@@ -376,7 +376,179 @@ was sent to Aurora.
 
 ---
 
-## Example Prompts
+### Video Generation Endpoints
+
+All three video endpoints require `XAI_API_KEY` and use `grok-imagine-video`.
+Video generation is **asynchronous** — the server polls xAI internally and
+returns the final result when ready. Typical wait: **30–90 seconds** depending
+on duration and resolution.
+
+> Videos are returned as temporary xAI-hosted URLs. **Download promptly.**
+> Pricing is per second of generated video at the selected resolution.
+
+#### Video Options
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `duration` | integer | `8` | Length in seconds (1–15). Ignored in edit mode. |
+| `aspect_ratio` | string | `"16:9"` | See table below |
+| `resolution` | string | `"720p"` | `480p` \| `720p` \| `1080p` |
+| `style` | string \| null | `null` | Free-text camera/style direction (see below) |
+
+**Supported aspect ratios:**
+
+| Value | Best for |
+|---|---|
+| `16:9` | Default — widescreen landscape scenes |
+| `9:16` | Vertical / mobile-portrait clips |
+| `4:3` | Classic cinematic / tavern interiors |
+| `3:4` | Portrait character reveals |
+| `1:1` | Social, square format |
+
+**Style (video)** is free-text, not a preset list. Describe camera and style
+direction naturally — it's woven into the prompt before generation:
+
+```
+"slow push-in on a foggy night"
+"sweeping aerial drone shot over the city"
+"handheld shaky-cam chase through narrow alleys"
+"epic slow-motion with lens flare"
+"dark fantasy matte painting aesthetic"
+```
+
+---
+
+#### `POST /videos/generate` — Text-to-video or Image-to-video
+
+Generate a video from a text prompt. Optionally supply `image_url` to animate
+a still image (image-to-video mode).
+
+**Request (text-to-video):**
+```json
+{
+  "prompt": "Stormhaven's harbor at dawn, fog rolling off the water, fishing boats setting out",
+  "duration": 10,
+  "aspect_ratio": "16:9",
+  "resolution": "1080p",
+  "style": "slow push-in, dark fantasy"
+}
+```
+
+**Request (image-to-video):**
+```json
+{
+  "prompt": "Bring the scene to life — torches flickering, cloaks billowing in the wind",
+  "image_url": "https://your-server.com/sable_portrait.png",
+  "duration": 8,
+  "aspect_ratio": "9:16",
+  "resolution": "720p"
+}
+```
+
+**Response:**
+```json
+{
+  "video_url": "https://vidgen.x.ai/.../video.mp4",
+  "prompt_used": "Stormhaven's harbor at dawn… — slow push-in, dark fantasy",
+  "duration": 10,
+  "aspect_ratio": "16:9",
+  "resolution": "1080p",
+  "style": "slow push-in, dark fantasy",
+  "request_id": "vg_abc123...",
+  "moderated": true,
+  "crafted_from_vault": false,
+  "vault_files_used": []
+}
+```
+
+---
+
+#### `POST /videos/edit` — Edit an existing video
+
+Modify an existing video by describing the desired changes. The source video
+must be publicly accessible and **≤ 8.7 seconds**. Output length matches
+the input — `duration` is not configurable in edit mode.
+
+**Request:**
+```json
+{
+  "video_url": "https://vidgen.x.ai/.../previous_clip.mp4",
+  "prompt": "Make the sky stormy and overcast, add rain"
+}
+```
+
+Common edit prompts:
+- `"Restyle as dark fantasy concept art"`
+- `"Remove the background figures, keep only the main character"`
+- `"Add falling snow and frost to every surface"`
+- `"Make it night — replace the daylight with moonlight and torches"`
+
+---
+
+#### `POST /videos/from-vault` — Vault-aware video generation
+
+The vault-aware equivalent of `/images/from-vault`, built for cinematic
+motion clips. Describe what you want to see; the agent searches the vault
+for relevant lore, then Grok crafts a detailed cinematic prompt before
+generating the video.
+
+**Request:**
+```json
+{
+  "description": "Sable fleeing across the Dockward rooftops at night",
+  "vault_references": ["NPCs/Sable.md", "Locations/Dockward.md"],
+  "top_k": 5,
+  "duration": 10,
+  "aspect_ratio": "16:9",
+  "resolution": "1080p",
+  "style": "handheld chase cam, dark and rainy"
+}
+```
+
+**Response:**
+```json
+{
+  "video_url": "https://vidgen.x.ai/.../video.mp4",
+  "prompt_used": "A lean half-elven woman with amber eyes vaults between rain-slicked rooftops above the Dockward wharves, lantern-light catching her worn leather cloak as city guards shout below — handheld chase cam, close follow, dark fantasy tone, rain and mist.",
+  "duration": 10,
+  "aspect_ratio": "16:9",
+  "resolution": "1080p",
+  "style": "handheld chase cam, dark and rainy",
+  "request_id": "vg_xyz789...",
+  "moderated": true,
+  "crafted_from_vault": true,
+  "vault_files_used": ["NPCs/Sable.md", "Locations/Dockward.md", "Factions/Thieves Guild.md"]
+}
+```
+
+---
+
+#### `GET /videos/status/{request_id}` — Check job status
+
+Returns the current status of any video generation job without blocking.
+Useful if you want to submit a job and poll separately rather than waiting
+on the blocking response.
+
+```
+GET /videos/status/vg_abc123...
+```
+
+```json
+{
+  "request_id": "vg_abc123...",
+  "status": "done",
+  "video_url": "https://vidgen.x.ai/.../video.mp4",
+  "duration": 10,
+  "moderated": true
+}
+```
+
+Status values: `pending` | `done` | `error`
+
+The `request_id` is always returned in every video response, so you can
+use this endpoint to re-check any job after the fact.
+
+---
 
 **Agent / vault writing:**
 ```
@@ -428,6 +600,32 @@ POST /images/from-vault
 }
 ```
 
+**Video generation:**
+```
+# Text-to-video — atmospheric scene
+POST /videos/generate
+{ "prompt": "A hooded figure crossing a fog-drenched stone bridge at midnight, torches casting orange halos",
+  "duration": 10, "aspect_ratio": "16:9", "resolution": "1080p",
+  "style": "slow orbital pan, dark fantasy" }
+
+# Image-to-video — animate an existing still
+POST /videos/generate
+{ "prompt": "Bring the character to life — cloak stirring in wind, eyes scanning the crowd",
+  "image_url": "https://your-host.com/sable_portrait.png",
+  "duration": 6, "aspect_ratio": "9:16" }
+
+# Video edit — add weather to a previously generated clip
+POST /videos/edit
+{ "video_url": "https://vidgen.x.ai/.../previous.mp4",
+  "prompt": "Turn this into a storm — dark clouds, driving rain, lightning in the distance" }
+
+# Vault-aware — let the lore write the prompt
+POST /videos/from-vault
+{ "description": "Aldric the Gray performing the ritual in his tower",
+  "top_k": 5, "duration": 12, "aspect_ratio": "16:9", "resolution": "1080p",
+  "style": "slow push-in, arcane glow, horror undertones" }
+```
+
 ---
 
 ## NAS / Network Share Notes
@@ -452,6 +650,9 @@ POST /images/from-vault
 | Grok chat default model | `providers.py` | `grok-3` | Change `GROK_DEFAULT_MODEL` |
 | Image model | `image_gen.py` | `grok-imagine-image` | Change `IMAGE_MODEL` |
 | Image count | per-request | `2` | Set `n` in the request body |
+| Video model | `video_gen.py` | `grok-imagine-video` | Change `VIDEO_MODEL` |
+| Video poll interval | `video_gen.py` | `5` s | Change `DEFAULT_POLL_INTERVAL` |
+| Video timeout | `video_gen.py` | `300` s | Change `DEFAULT_TIMEOUT_SECONDS` |
 
 ---
 
@@ -463,6 +664,7 @@ python-game-vault/
 ├── agent.py          — Provider-agnostic LLM agent loop
 ├── providers.py      — Claude + Grok provider implementations + factory
 ├── image_gen.py      — Grok Aurora image generation + vault prompt builder
+├── video_gen.py      — Grok Aurora video generation, editing + vault prompt builder
 ├── models.py         — Pydantic request/response models
 ├── embeddings.py     — Sentence-transformer vault index
 ├── staging.py        — In-memory staging area + session store
