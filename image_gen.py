@@ -35,8 +35,8 @@ from openai import OpenAI
 
 logger = logging.getLogger(__name__)
 
-IMAGE_MODEL = "grok-imagine-image"
-CHAT_MODEL  = "grok-4-1-fast-reasoning"
+IMAGE_MODEL   = "grok-imagine-image"
+CHAT_MODEL    = "grok-4-1-fast-reasoning"
 GROK_BASE_URL = "https://api.x.ai/v1"
 
 # ---------------------------------------------------------------------------

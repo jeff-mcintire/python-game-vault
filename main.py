@@ -247,7 +247,7 @@ async def chat(request: ChatRequest):
     **Nothing is written to disk.**
 
     - `provider`: `"claude"` (default) or `"grok"`
-    - `model`: optional override (e.g. `"grok-3-mini"`, `"claude-sonnet-4-5"`)
+    - `model`: optional override (e.g. `"grok-4-1-fast-non-reasoning"`, `"claude-sonnet-4-5"`)
 
     Returns a `PendingReview` with a `session_id` for confirm/modify/discard.
     """
@@ -416,8 +416,12 @@ async def providers():
         }
     if os.getenv("XAI_API_KEY"):
         available["grok"] = {
-            "default_model": "grok-3",
-            "other_models": ["grok-3-mini", "grok-2"],
+            "default_model": "grok-4-1-fast-reasoning",
+            "other_models": [
+                "grok-4-1-fast-non-reasoning",
+                "grok-3",
+                "grok-3-mini",
+            ],
         }
     return {"providers": available}
 

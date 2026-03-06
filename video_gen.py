@@ -50,7 +50,7 @@ import requests
 logger = logging.getLogger(__name__)
 
 VIDEO_MODEL   = "grok-imagine-video"
-CHAT_MODEL    = "grok-3"
+CHAT_MODEL    = "grok-4-1-fast-reasoning"
 GROK_BASE_URL = "https://api.x.ai/v1"
 
 # ---------------------------------------------------------------------------

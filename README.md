@@ -96,7 +96,16 @@ what you specify in each call.
 | Provider | Field value | Default model | Requires |
 |---|---|---|---|
 | Anthropic Claude | `"claude"` | `claude-opus-4-5` | `ANTHROPIC_API_KEY` |
-| xAI Grok | `"grok"` | `grok-3` | `XAI_API_KEY` |
+| xAI Grok | `"grok"` | `grok-4-1-fast-reasoning` | `XAI_API_KEY` |
+
+**Available Grok chat models:**
+
+| Model | Notes |
+|---|---|
+| `grok-4-1-fast-reasoning` | Default — fast with reasoning capability |
+| `grok-4-1-fast-non-reasoning` | Fast, no reasoning overhead — best for simple creative tasks |
+| `grok-3` | Previous flagship |
+| `grok-3-mini` | Lightweight / low-cost option |
 
 Image generation always uses Grok Aurora (`grok-imagine-image`) regardless
 of the provider selected for chat operations, and requires `XAI_API_KEY`.
@@ -724,7 +733,7 @@ URL into this endpoint → get back a permanent, high-res version.
 | `EMBED_CHARS` | `embeddings.py` | 2000 | Characters embedded per file |
 | `POLL_INTERVAL_SECONDS` | `watcher.py` | 30 | NAS polling frequency (seconds) |
 | Claude default model | `providers.py` | `claude-opus-4-5` | Change `CLAUDE_DEFAULT_MODEL` |
-| Grok chat default model | `providers.py` | `grok-3` | Change `GROK_DEFAULT_MODEL` |
+| Grok chat default model | `providers.py` | `grok-4-1-fast-reasoning` | Change `GROK_DEFAULT_MODEL` |
 | Image model | `image_gen.py` | `grok-imagine-image` | Change `IMAGE_MODEL` |
 | Image count | per-request | `2` | Set `n` in the request body |
 | Video model | `video_gen.py` | `grok-imagine-video` | Change `VIDEO_MODEL` |

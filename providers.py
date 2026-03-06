@@ -176,8 +176,13 @@ class ClaudeProvider(LLMProvider):
 # Grok provider  (OpenAI-compatible API at api.x.ai)
 # ---------------------------------------------------------------------------
 
-#GROK_DEFAULT_MODEL = "grok-3"
 GROK_DEFAULT_MODEL = "grok-4-1-fast-reasoning"
+GROK_CHAT_MODELS = [
+    "grok-4-1-fast-reasoning",      # default — fast + reasoning
+    "grok-4-1-fast-non-reasoning",  # fast, no reasoning overhead
+    "grok-3",                       # previous flagship
+    "grok-3-mini",                  # lightweight / low-cost
+]
 GROK_BASE_URL = "https://api.x.ai/v1"
 
 
