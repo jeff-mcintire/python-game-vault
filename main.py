@@ -33,17 +33,21 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from agent import RPGAgent
 from embeddings import VaultIndex
+from image_gen import build_vault_prompt, generate_images
 from models import (
     ChatRequest,
     CommitResponse,
     DiscardResponse,
     FileListResponse,
     FileSearchResult,
+    ImageGenerateRequest,
+    ImageGenerateResponse,
     IndexStatus,
     ModifyRequest,
     OperationRecord,
     PendingReview,
     StagedChangeResponse,
+    VaultImageRequest,
 )
 from providers import ProviderName, create_provider
 from staging import SessionStore, StagingArea
@@ -397,8 +401,8 @@ async def providers():
         }
     if os.getenv("XAI_API_KEY"):
         available["grok"] = {
-            "default_model": "grok-3",
-            "other_models": ["grok-3-mini", "grok-2"],
+            "default_model": "grok-4-1-fast-reasoning",
+            "other_models": ["grok-4-1-fast-non-reasoning", "grok-3-mini", "grok-3"],
         }
     return {"providers": available}
 
@@ -440,3 +444,140 @@ async def reindex(background_tasks: BackgroundTasks):
 
     background_tasks.add_task(_do_reindex)
     return {"message": "Reindex started in background. Check /status for progress."}
+
+
+# ---------------------------------------------------------------------------
+# POST /images/generate  — direct prompt → 2 images
+# ---------------------------------------------------------------------------
+
+@app.post(
+    "/images/generate",
+    response_model=ImageGenerateResponse,
+    summary="Generate images directly from a text prompt",
+)
+async def images_generate(request: ImageGenerateRequest):
+    """
+    Generate images directly from your own prompt using Grok Aurora.
+
+    Returns `n` image URLs (default 2). Images are hosted temporarily
+    on xAI's storage — download them if you want to keep them.
+
+    **Requires** `XAI_API_KEY` to be set.
+
+    Example:
+    ```json
+    {
+      "prompt": "A hooded elven rogue standing on rain-slicked cobblestones, lantern light, dark fantasy oil painting",
+      "n": 2
+    }
+    ```
+    """
+    if not os.getenv("XAI_API_KEY"):
+        raise HTTPException(status_code=400, detail="XAI_API_KEY is not set.")
+    try:
+        urls = generate_images(prompt=request.prompt, n=request.n)
+        return ImageGenerateResponse(
+            images=urls,
+            prompt_used=request.prompt,
+            crafted_from_vault=False,
+        )
+    except Exception as e:
+        logger.exception("Image generation failed")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# POST /images/from-vault  — vault-aware prompt builder + image generation
+# ---------------------------------------------------------------------------
+
+@app.post(
+    "/images/from-vault",
+    response_model=ImageGenerateResponse,
+    summary="Generate images using vault lore to craft the prompt",
+)
+async def images_from_vault(request: VaultImageRequest):
+    """
+    Describe what you want to visualize and optionally name specific vault
+    files. The app will:
+
+    1. Search the vault semantically for relevant content (characters,
+       locations, factions, lore) related to your description.
+    2. Include any explicitly named `vault_references` files.
+    3. Ask Grok to craft a rich, lore-accurate image generation prompt
+       from all that context.
+    4. Generate `n` images (default 2) from the crafted prompt.
+
+    Returns the image URLs **and** the crafted prompt so you can see
+    exactly what was sent to the image model.
+
+    **Requires** `XAI_API_KEY` to be set.
+
+    Example — referencing a vault character by name:
+    ```json
+    {
+      "description": "Sable the half-elven informant watching the docks at night",
+      "vault_references": ["NPCs/Sable.md", "Locations/Dockward.md"],
+      "top_k": 4
+    }
+    ```
+
+    Example — purely semantic, no explicit references:
+    ```json
+    {
+      "description": "The throne room of House Valdris after the coup",
+      "top_k": 6
+    }
+    ```
+    """
+    if not os.getenv("XAI_API_KEY"):
+        raise HTTPException(status_code=400, detail="XAI_API_KEY is not set.")
+    if _index is None or _vault is None:
+        raise HTTPException(status_code=503, detail="Vault not initialised.")
+
+    try:
+        # 1. Semantic search for relevant vault files
+        search_results = _index.search(request.description, top_k=request.top_k)
+        files_used = [path for path, _ in search_results]
+
+        # 2. Add any explicitly requested vault files (deduplicated)
+        for ref in request.vault_references:
+            if ref not in files_used:
+                files_used.append(ref)
+
+        # 3. Build vault context string from all selected files
+        context_parts = []
+        for path in files_used:
+            try:
+                content = _vault.read_relative(path)
+                context_parts.append(f"### {path}\n{content}")
+            except FileNotFoundError:
+                logger.warning(f"Vault reference not found: {path}")
+
+        vault_context = "\n\n".join(context_parts) if context_parts else "(no vault files found)"
+
+        # 4. Ask Grok to craft a rich image prompt from the context
+        crafted_prompt = build_vault_prompt(
+            description=request.description,
+            vault_context=vault_context,
+        )
+
+        # 5. Generate images from the crafted prompt
+        urls = generate_images(prompt=crafted_prompt, n=request.n)
+
+        logger.info(
+            f"Vault image: {len(files_used)} file(s) used, "
+            f"{len(urls)} image(s) generated"
+        )
+
+        return ImageGenerateResponse(
+            images=urls,
+            prompt_used=crafted_prompt,
+            crafted_from_vault=True,
+            vault_files_used=files_used,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Vault image generation failed")
+        raise HTTPException(status_code=500, detail=str(e))

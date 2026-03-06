@@ -95,3 +95,26 @@ class FileSearchResult(BaseModel):
 
 class FileListResponse(BaseModel):
     files: list[FileSearchResult]
+
+
+# ---------------------------------------------------------------------------
+# Image generation  (POST /images/generate  and  POST /images/from-vault)
+# ---------------------------------------------------------------------------
+
+class ImageGenerateRequest(BaseModel):
+    prompt: str                          # raw image prompt
+    n: int = 2                           # number of images to return (default 2)
+
+
+class VaultImageRequest(BaseModel):
+    description: str                     # what you want to visualize
+    vault_references: list[str] = []     # optional explicit file paths to include
+    top_k: int = 6                       # how many semantic search results to pull
+    n: int = 2                           # number of images to return
+
+
+class ImageGenerateResponse(BaseModel):
+    images: list[str]                    # list of image URLs
+    prompt_used: str                     # the prompt that was sent to the image model
+    crafted_from_vault: bool = False     # True when the prompt was built from vault content
+    vault_files_used: list[str] = []     # which vault files informed the prompt
