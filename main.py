@@ -778,6 +778,9 @@ async def videos_generate(request: VideoGenerateRequest):
 
     except TimeoutError as e:
         raise HTTPException(status_code=504, detail=str(e))
+    except RuntimeError as e:
+        logger.error(f"Video generation failed (upstream): {e}")
+        raise HTTPException(status_code=502, detail=str(e))
     except Exception as e:
         logger.exception("Video generation failed")
         raise HTTPException(status_code=500, detail=str(e))
@@ -833,6 +836,9 @@ async def videos_edit(request: VideoEditRequest):
 
     except TimeoutError as e:
         raise HTTPException(status_code=504, detail=str(e))
+    except RuntimeError as e:
+        logger.error(f"Video edit failed (upstream): {e}")
+        raise HTTPException(status_code=502, detail=str(e))
     except Exception as e:
         logger.exception("Video edit failed")
         raise HTTPException(status_code=500, detail=str(e))
@@ -930,6 +936,9 @@ async def videos_from_vault(request: VaultVideoRequest):
         raise HTTPException(status_code=504, detail=str(e))
     except HTTPException:
         raise
+    except RuntimeError as e:
+        logger.error(f"Vault video generation failed (upstream): {e}")
+        raise HTTPException(status_code=502, detail=str(e))
     except Exception as e:
         logger.exception("Vault video generation failed")
         raise HTTPException(status_code=500, detail=str(e))

@@ -189,6 +189,14 @@ def poll_video(
 
     logger.info(f"Polling video {request_id} (timeout {timeout}s, every {interval}s)…")
 
+    # Known terminal statuses from xAI REST API:
+    #   "done"    — generation completed successfully
+    #   "expired" — xAI rejected or failed the job (moderation, bad input, etc.)
+    #   "pending" — still processing (keep polling)
+    # Any other unexpected value is treated as a terminal failure rather than
+    # silently looping to timeout.
+    TERMINAL_FAILURE_STATUSES = {"expired", "error", "failed", "cancelled"}
+
     while time.time() < deadline:
         resp = requests.get(poll_url, headers=auth, timeout=15)
 
@@ -204,12 +212,22 @@ def poll_video(
             logger.info(f"Video ready — {data.get('video', {}).get('url', '')[:60]}…")
             return data
 
-        if status == "error":
+        if status in TERMINAL_FAILURE_STATUSES:
             raise RuntimeError(
-                f"Video generation failed (request_id={request_id}): {data}"
+                f"Video generation failed with status '{status}' "
+                f"(request_id={request_id}): {data}"
             )
 
-        # Still pending — wait before next poll
+        if status not in ("pending", "processing", "queued"):
+            # Unrecognised status — log a warning but keep polling briefly
+            # to allow for new statuses xAI may introduce, unless we've seen
+            # it twice (handled by the deadline check above).
+            logger.warning(
+                f"Unknown video status '{status}' for {request_id} — "
+                f"will keep polling until deadline or recognised terminal status"
+            )
+
+        # Still in-progress — wait before next poll
         logger.debug(f"Video status: {status} — retrying in {interval}s…")
         time.sleep(interval)
 
