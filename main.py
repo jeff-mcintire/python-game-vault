@@ -475,10 +475,19 @@ async def images_generate(request: ImageGenerateRequest):
     if not os.getenv("XAI_API_KEY"):
         raise HTTPException(status_code=400, detail="XAI_API_KEY is not set.")
     try:
-        urls = generate_images(prompt=request.prompt, n=request.n)
+        urls = generate_images(
+            prompt=request.prompt,
+            n=request.n,
+            aspect_ratio=request.aspect_ratio,
+            resolution=request.resolution,
+            style=request.style,
+        )
         return ImageGenerateResponse(
             images=urls,
             prompt_used=request.prompt,
+            aspect_ratio=request.aspect_ratio,
+            resolution=request.resolution,
+            style=request.style,
             crafted_from_vault=False,
         )
     except Exception as e:
@@ -559,10 +568,17 @@ async def images_from_vault(request: VaultImageRequest):
         crafted_prompt = build_vault_prompt(
             description=request.description,
             vault_context=vault_context,
+            style=request.style,
         )
 
         # 5. Generate images from the crafted prompt
-        urls = generate_images(prompt=crafted_prompt, n=request.n)
+        urls = generate_images(
+            prompt=crafted_prompt,
+            n=request.n,
+            aspect_ratio=request.aspect_ratio,
+            resolution=request.resolution,
+            style=request.style,
+        )
 
         logger.info(
             f"Vault image: {len(files_used)} file(s) used, "
@@ -572,6 +588,9 @@ async def images_from_vault(request: VaultImageRequest):
         return ImageGenerateResponse(
             images=urls,
             prompt_used=crafted_prompt,
+            aspect_ratio=request.aspect_ratio,
+            resolution=request.resolution,
+            style=request.style,
             crafted_from_vault=True,
             vault_files_used=files_used,
         )

@@ -1,5 +1,5 @@
 from typing import Literal, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from providers import ProviderName
 
 
@@ -101,20 +101,90 @@ class FileListResponse(BaseModel):
 # Image generation  (POST /images/generate  and  POST /images/from-vault)
 # ---------------------------------------------------------------------------
 
+# Importing valid option lists from image_gen keeps models and logic in sync.
+from image_gen import ASPECT_RATIOS, RESOLUTIONS, STYLES
+
+
 class ImageGenerateRequest(BaseModel):
-    prompt: str                          # raw image prompt
-    n: int = 2                           # number of images to return (default 2)
+    prompt: str
+    n: int = 2
+    # --- display options ---
+    aspect_ratio: str = "auto"
+    """
+    Image proportions.  One of:
+    auto | 1:1 | 16:9 | 9:16 | 4:3 | 3:4 | 3:2 | 2:3 | 2:1 | 1:2
+    19.5:9 | 9:19.5 | 20:9 | 9:20
+    Default: auto (model picks the best ratio for the prompt).
+    """
+    resolution: str = "1k"
+    """Output resolution.  One of: 1k | 2k.  Default: 1k."""
+    style: Optional[str] = None
+    """
+    Art style preset appended to the prompt.  One of:
+    photorealistic | oil_painting | watercolor | pencil_sketch |
+    anime | dark_fantasy | concept_art | ink_wash
+    Default: None (no style directive added).
+    """
+
+    @field_validator("aspect_ratio")
+    @classmethod
+    def validate_aspect_ratio(cls, v: str) -> str:
+        if v not in ASPECT_RATIOS:
+            raise ValueError(f"aspect_ratio must be one of {ASPECT_RATIOS}")
+        return v
+
+    @field_validator("resolution")
+    @classmethod
+    def validate_resolution(cls, v: str) -> str:
+        if v not in RESOLUTIONS:
+            raise ValueError(f"resolution must be one of {RESOLUTIONS}")
+        return v
+
+    @field_validator("style")
+    @classmethod
+    def validate_style(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in STYLES:
+            raise ValueError(f"style must be one of {STYLES} or null")
+        return v
 
 
 class VaultImageRequest(BaseModel):
     description: str                     # what you want to visualize
     vault_references: list[str] = []     # optional explicit file paths to include
     top_k: int = 6                       # how many semantic search results to pull
-    n: int = 2                           # number of images to return
+    n: int = 2
+    # --- display options (same as ImageGenerateRequest) ---
+    aspect_ratio: str = "auto"
+    resolution: str = "1k"
+    style: Optional[str] = None
+
+    @field_validator("aspect_ratio")
+    @classmethod
+    def validate_aspect_ratio(cls, v: str) -> str:
+        if v not in ASPECT_RATIOS:
+            raise ValueError(f"aspect_ratio must be one of {ASPECT_RATIOS}")
+        return v
+
+    @field_validator("resolution")
+    @classmethod
+    def validate_resolution(cls, v: str) -> str:
+        if v not in RESOLUTIONS:
+            raise ValueError(f"resolution must be one of {RESOLUTIONS}")
+        return v
+
+    @field_validator("style")
+    @classmethod
+    def validate_style(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in STYLES:
+            raise ValueError(f"style must be one of {STYLES} or null")
+        return v
 
 
 class ImageGenerateResponse(BaseModel):
     images: list[str]                    # list of image URLs
-    prompt_used: str                     # the prompt that was sent to the image model
-    crafted_from_vault: bool = False     # True when the prompt was built from vault content
-    vault_files_used: list[str] = []     # which vault files informed the prompt
+    prompt_used: str                     # the final prompt sent to the image model
+    aspect_ratio: str = "auto"           # aspect ratio used
+    resolution: str = "1k"              # resolution used
+    style: Optional[str] = None          # style preset used (if any)
+    crafted_from_vault: bool = False
+    vault_files_used: list[str] = []
