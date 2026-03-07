@@ -264,6 +264,73 @@ class ImageGenerateResponse(BaseModel):
     vault_files_used: list[str] = []
 
 
+class ImageEditRequest(BaseModel):
+    prompt: str
+    """
+    Natural-language description of the desired change.  Be explicit about
+    what to keep as well as what to change — e.g.:
+      "Keep the face and pose unchanged; swap the armour for dark elven robes"
+      "Add dramatic storm clouds to the sky; leave the foreground untouched"
+      "Render this as a watercolor painting"
+      "Add the character from the first image into the tavern scene of the second"
+    """
+    image_urls: list[str]
+    """
+    Source image(s) to edit.  1–10 items.
+    - One URL  → single-image edit or style transfer.
+    - Multiple → multi-image compositing (model understands all inputs).
+    Accepts public image URLs or base64 data URIs
+    (e.g. "data:image/jpeg;base64,...").
+    For multi-turn chaining, pass the URL from a previous edit as image_urls[0].
+    """
+    n: int = 1
+    aspect_ratio: str = "auto"
+    """Output aspect ratio.  Same values as /images/generate."""
+    resolution: str = "1k"
+    """Output resolution.  "1k" or "2k".  Default: "1k"."""
+    style: Optional[str] = None
+    """Art style preset appended to the prompt.  Same values as /images/generate."""
+
+    @field_validator("image_urls")
+    @classmethod
+    def validate_image_urls(cls, v: list[str]) -> list[str]:
+        if len(v) == 0:
+            raise ValueError("image_urls must contain at least one URL")
+        if len(v) > 10:
+            raise ValueError("image_urls must contain 10 or fewer URLs")
+        return v
+
+    @field_validator("aspect_ratio")
+    @classmethod
+    def validate_aspect_ratio(cls, v: str) -> str:
+        if v not in ASPECT_RATIOS:
+            raise ValueError(f"aspect_ratio must be one of {ASPECT_RATIOS}")
+        return v
+
+    @field_validator("resolution")
+    @classmethod
+    def validate_resolution(cls, v: str) -> str:
+        if v not in RESOLUTIONS:
+            raise ValueError(f"resolution must be one of {RESOLUTIONS}")
+        return v
+
+    @field_validator("style")
+    @classmethod
+    def validate_style(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in STYLES:
+            raise ValueError(f"style must be one of {STYLES} or null")
+        return v
+
+
+class ImageEditResponse(BaseModel):
+    images: list[str]         # output image URLs (temporary xAI-hosted)
+    prompt_used: str          # final prompt sent (with style suffix if any)
+    source_count: int         # number of source images provided
+    aspect_ratio: str
+    resolution: str
+    style: Optional[str] = None
+
+
 # ---------------------------------------------------------------------------
 # Video generation  (POST /videos/generate, /videos/edit, /videos/from-vault)
 # ---------------------------------------------------------------------------

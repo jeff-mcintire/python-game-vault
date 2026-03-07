@@ -416,6 +416,79 @@ The app will:
 
 ---
 
+#### `POST /images/edit` — Grok Aurora Image Editing
+
+Edit existing images using **grok-imagine-image** with a natural-language prompt.
+The model understands image content and applies targeted changes while preserving
+structure. Useful for style transfers, character adjustments, compositing, and
+iterative multi-turn refinements.
+
+**Requires** `XAI_API_KEY`.  Cost: **$0.022 per output image** ($0.02 output + $0.002 input).
+Output URLs are temporary — download promptly.
+
+> Note: The OpenAI SDK's `images.edit()` does **not** work here — xAI requires
+> `application/json`, not `multipart/form-data`. This endpoint calls the xAI REST
+> API directly.
+
+**Single-image edit — style transfer:**
+```json
+{
+  "prompt": "Render this as a dark fantasy oil painting with dramatic torchlight",
+  "image_urls": ["https://images.x.ai/.../portrait.jpg"],
+  "n": 1,
+  "aspect_ratio": "3:4",
+  "style": "oil_painting"
+}
+```
+
+**Multi-image composite:**
+```json
+{
+  "prompt": "Add the character from the first image into the tavern scene of the second",
+  "image_urls": [
+    "https://images.x.ai/.../character.jpg",
+    "https://images.x.ai/.../tavern.jpg"
+  ]
+}
+```
+
+**Multi-turn chain** — pass the previous output URL as `image_urls[0]` to refine iteratively:
+```json
+{
+  "prompt": "Now add a hooded cloak; keep everything else the same",
+  "image_urls": ["https://images.x.ai/.../previous_output.jpg"]
+}
+```
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `prompt` | string | required | What to change — be explicit about what to keep too |
+| `image_urls` | string[] | required | 1–10 source image URLs or base64 data URIs |
+| `n` | integer | 1 | Number of output variations to generate |
+| `aspect_ratio` | string | `"auto"` | Output aspect ratio — see image options above |
+| `resolution` | string | `"1k"` | `"1k"` or `"2k"` |
+| `style` | string \| null | `null` | Style preset appended to the prompt |
+
+**Response:**
+```json
+{
+  "images": ["https://images.x.ai/.../edited.jpg"],
+  "prompt_used": "Render this as a dark fantasy oil painting with dramatic torchlight — rendered as an oil painting in the style of classical impressionism",
+  "source_count": 1,
+  "aspect_ratio": "3:4",
+  "resolution": "1k",
+  "style": "oil_painting"
+}
+```
+
+**Tips for best results:**
+- Lock what shouldn't change: `"Keep the face, pose, and background unchanged; change only the armour."`
+- For style transfers, describe the target fully rather than just naming the style.
+- For multi-turn chains, reference the previous change to maintain continuity.
+- Use `n: 2` to generate side-by-side variations of the same edit.
+
+---
+
 ### Video Generation Endpoints
 
 All three video endpoints require `XAI_API_KEY` and use `grok-imagine-video`.

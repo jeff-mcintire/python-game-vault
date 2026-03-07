@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "Locations/Willowmere/The Hearthstone Inn.md",
+                "file": "NPCs/Aldric Thorne.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "The Hearthstone Inn"
+              "title": "Aldric Thorne"
             }
           }
         ]
@@ -94,7 +94,7 @@
             "state": {
               "type": "backlink",
               "state": {
-                "file": "Locations/Willowmere/The Hearthstone Inn.md",
+                "file": "NPCs/Aldric Thorne.md",
                 "collapseAll": false,
                 "extraContext": false,
                 "sortOrder": "alphabetical",
@@ -104,7 +104,7 @@
                 "unlinkedCollapsed": true
               },
               "icon": "links-coming-in",
-              "title": "Backlinks for The Hearthstone Inn"
+              "title": "Backlinks for Aldric Thorne"
             }
           },
           {
@@ -113,12 +113,12 @@
             "state": {
               "type": "outgoing-link",
               "state": {
-                "file": "Locations/Willowmere/The Hearthstone Inn.md",
+                "file": "NPCs/Aldric Thorne.md",
                 "linksCollapsed": false,
                 "unlinkedCollapsed": true
               },
               "icon": "links-going-out",
-              "title": "Outgoing links from The Hearthstone Inn"
+              "title": "Outgoing links from Aldric Thorne"
             }
           },
           {
@@ -156,13 +156,13 @@
             "state": {
               "type": "outline",
               "state": {
-                "file": "Locations/Willowmere/The Hearthstone Inn.md",
+                "file": "NPCs/Aldric Thorne.md",
                 "followCursor": false,
                 "showSearch": false,
                 "searchQuery": ""
               },
               "icon": "lucide-list",
-              "title": "Outline of The Hearthstone Inn"
+              "title": "Outline of Aldric Thorne"
             }
           }
         ]
@@ -185,6 +185,7 @@
   },
   "active": "fec94fd65271ba30",
   "lastOpenFiles": [
+    "Locations/Willowmere/The Hearthstone Inn.md",
     "NPCs/Lily Hollowell.md",
     "NPCs/Gareth Hollowell.md",
     "NPCs/Willem Moss.md",
@@ -200,7 +201,6 @@
     "Locations/Willowmere/Ironfoot Smithy.md",
     "NPCs",
     "Locations/Willowmere/Willowmere.md",
-    "Locations/Willowmere/The Hearthstone Inn.md",
     "Locations/Willowmere/Mabel's Sundries.md",
     "Locations/Willowmere",
     "Locations"

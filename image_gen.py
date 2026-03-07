@@ -31,6 +31,7 @@ import logging
 import os
 from typing import Literal, Optional
 
+import requests
 from openai import OpenAI
 
 logger = logging.getLogger(__name__)
@@ -199,3 +200,126 @@ Write an image generation prompt based on the above."""
     crafted = response.choices[0].message.content.strip()
     logger.info(f"Vault-crafted prompt: {crafted[:100]}…")
     return crafted
+
+
+# ---------------------------------------------------------------------------
+# Image editing  (POST /v1/images/edits)
+# ---------------------------------------------------------------------------
+# The xAI image edit endpoint uses application/json — not multipart/form-data
+# like the OpenAI spec.  This means the OpenAI SDK's client.images.edit()
+# method does NOT work here; we call the HTTP API directly with requests.
+#
+# Pricing: $0.022 per output image ($0.02 output + $0.002 input).
+# URLs are temporary — download promptly.
+#
+# Modes
+# -----
+#   Single-image edit:
+#     image_urls = ["https://..."]     → edits the one image
+#
+#   Multi-image composite:
+#     image_urls = ["https://url1", "https://url2"]
+#     → model understands both and follows the prompt
+#       e.g. "add the character from the first image into the second scene"
+#
+#   Multi-turn chaining:
+#     Pass the URL returned from a previous edit call as image_urls[0] to
+#     refine iteratively — each output becomes the next input.
+
+EDIT_ENDPOINT = f"{GROK_BASE_URL}/images/edits"
+
+
+def edit_images(
+    prompt: str,
+    image_urls: list[str],
+    n: int = 1,
+    aspect_ratio: str = "auto",
+    resolution: str = "1k",
+    style: Optional[str] = None,
+    api_key: Optional[str] = None,
+) -> list[str]:
+    """
+    Edit one or more images using Grok Aurora (grok-imagine-image).
+
+    Sends a POST to /v1/images/edits with application/json.
+
+    Parameters
+    ----------
+    prompt          Natural-language description of the desired change.
+                    Examples:
+                      "Render this as an oil painting in the style of impressionism"
+                      "Add the character from the first image into the second scene"
+                      "Change the lighting to golden-hour sunset"
+                      "Keep the face and pose unchanged; swap the armour for dark robes"
+    image_urls      List of source image URLs or base64 data URIs.
+                    One URL  → single-image edit.
+                    Multiple → multi-image compositing.
+                    Max 10 images.  Accepts public URLs or base64 data URIs
+                    (e.g. "data:image/jpeg;base64,...").
+    n               Number of output images to generate (default 1).
+    aspect_ratio    Output aspect ratio — same values as generate_images().
+    resolution      "1k" or "2k" (default "1k").
+    style           Optional style preset — appended to the prompt as text.
+
+    Returns
+    -------
+    list[str]   Output image URLs (temporary xAI-hosted).
+
+    Raises
+    ------
+    RuntimeError    on API error or missing credentials.
+    ValueError      if image_urls is empty or exceeds 10 items.
+    """
+    if not image_urls:
+        raise ValueError("image_urls must contain at least one URL")
+    if len(image_urls) > 10:
+        raise ValueError("image_urls must contain 10 or fewer URLs")
+
+    key = api_key or os.getenv("XAI_API_KEY")
+    if not key:
+        raise RuntimeError("XAI_API_KEY is not set.")
+
+    # Append style suffix to prompt if requested
+    final_prompt = prompt
+    if style and style in STYLE_SUFFIXES:
+        final_prompt = f"{prompt.rstrip('.')} — {STYLE_SUFFIXES[style]}"
+
+    # Build the images array (xAI format)
+    images_payload = [{"url": u, "type": "image_url"} for u in image_urls]
+
+    body: dict = {
+        "model":        IMAGE_MODEL,
+        "prompt":       final_prompt,
+        "n":            n,
+        "aspect_ratio": aspect_ratio,
+        "resolution":   resolution,
+    }
+
+    # Single image uses "image" key; multiple uses "images" key
+    if len(image_urls) == 1:
+        body["image"] = images_payload[0]
+    else:
+        body["images"] = images_payload
+
+    headers = {
+        "Content-Type":  "application/json",
+        "Authorization": f"Bearer {key}",
+    }
+
+    logger.info(
+        f"Editing {len(image_urls)} image(s) | n={n} aspect={aspect_ratio} "
+        f"res={resolution} style={style or 'none'} | prompt: {final_prompt[:80]}…"
+    )
+
+    resp = requests.post(EDIT_ENDPOINT, json=body, headers=headers, timeout=120)
+
+    if not resp.ok:
+        raise RuntimeError(
+            f"xAI image edit error {resp.status_code}: {resp.text[:400]}"
+        )
+
+    data = resp.json()
+    urls = [item.get("url", "") for item in data.get("data", []) if item.get("url")]
+
+    logger.info(f"Image edit done | {len(urls)} image(s) returned")
+    return urls

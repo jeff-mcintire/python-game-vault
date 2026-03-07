@@ -35,7 +35,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from agent import RPGAgent
 from embeddings import VaultIndex
 from fal_tools import clarity_upscale, flux2_pro_generate, nsfw_check
-from image_gen import build_vault_prompt, generate_images
+from image_gen import build_vault_prompt, edit_images, generate_images
 from video_gen import (
     build_vault_video_prompt,
     edit_video,
@@ -48,6 +48,8 @@ from models import (
     DiscardResponse,
     FileListResponse,
     FileSearchResult,
+    ImageEditRequest,
+    ImageEditResponse,
     ImageGenerateRequest,
     ImageGenerateResponse,
     IndexStatus,
@@ -714,6 +716,104 @@ async def images_from_vault(request: VaultImageRequest):
         raise
     except Exception as e:
         logger.exception("Vault image generation failed")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# POST /images/edit  — Grok Aurora image editing
+# ---------------------------------------------------------------------------
+
+@app.post(
+    "/images/edit",
+    response_model=ImageEditResponse,
+    summary="Edit one or more images with a text prompt using Grok Aurora",
+)
+async def images_edit(request: ImageEditRequest):
+    """
+    Edit existing images using Grok Aurora (`grok-imagine-image`).
+
+    Provide one or more source images and a prompt describing the desired
+    changes.  The model understands image content and applies targeted edits
+    while preserving structure.
+
+    **Requires** `XAI_API_KEY`.  Cost: **$0.022 per output image**
+    ($0.02 output + $0.002 input).  Output URLs are temporary — download promptly.
+
+    ---
+
+    **Single-image edit** — style transfer, object modification, lighting change:
+    ```json
+    {
+      "prompt": "Render this as a dark fantasy oil painting with dramatic torchlight",
+      "image_urls": ["https://images.x.ai/.../portrait.jpg"],
+      "style": "oil_painting"
+    }
+    ```
+
+    **Multi-image composite** — combine elements from multiple source images:
+    ```json
+    {
+      "prompt": "Add the character from the first image into the tavern scene of the second",
+      "image_urls": [
+        "https://images.x.ai/.../character.jpg",
+        "https://images.x.ai/.../tavern.jpg"
+      ]
+    }
+    ```
+
+    **Multi-turn chaining** — refine iteratively by passing the previous output URL
+    as `image_urls[0]`:
+    ```json
+    {
+      "prompt": "Now add a hooded cloak to the character; keep everything else the same",
+      "image_urls": ["https://images.x.ai/.../previous_edit_output.jpg"]
+    }
+    ```
+
+    **Tips for best results:**
+    - Be explicit about what to **keep** as well as what to change.
+    - Lock unchanged elements: `"Keep the face, pose, and background unchanged; change only the armour."`
+    - For style transfers, describe the target aesthetic fully.
+    - For multi-turn chains, reference the previous change to maintain continuity.
+    """
+    if not os.getenv("XAI_API_KEY"):
+        raise HTTPException(status_code=400, detail="XAI_API_KEY is not set.")
+
+    try:
+        urls = await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: edit_images(
+                prompt=request.prompt,
+                image_urls=request.image_urls,
+                n=request.n,
+                aspect_ratio=request.aspect_ratio,
+                resolution=request.resolution,
+                style=request.style,
+            ),
+        )
+
+        # Build the final prompt string for the response (mirrors edit_images logic)
+        from image_gen import STYLE_SUFFIXES
+        final_prompt = request.prompt
+        if request.style and request.style in STYLE_SUFFIXES:
+            final_prompt = f"{request.prompt.rstrip('.')} — {STYLE_SUFFIXES[request.style]}"
+
+        return ImageEditResponse(
+            images=urls,
+            prompt_used=final_prompt,
+            source_count=len(request.image_urls),
+            aspect_ratio=request.aspect_ratio,
+            resolution=request.resolution,
+            style=request.style,
+        )
+
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except RuntimeError as e:
+        logger.error(f"Image edit failed (upstream): {e}")
+        raise HTTPException(status_code=502, detail=str(e))
+    except Exception as e:
+        logger.exception("Image edit failed")
         raise HTTPException(status_code=500, detail=str(e))
 
 
