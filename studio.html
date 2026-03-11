@@ -1,0 +1,2505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>RPG Media Studio</title>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Cinzel+Decorative:wght@700&family=Crimson+Text:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --obsidian: #0a0a0f;
+    --stone: #111118;
+    --slate: #1a1a24;
+    --panel: #14141e;
+    --border: #2a2a3a;
+    --border-glow: #3d3050;
+    --gold: #c9a84c;
+    --gold-bright: #e8c96a;
+    --gold-dim: #7a6030;
+    --amber: #ff8c00;
+    --crimson: #8b1a1a;
+    --arcane: #6b4fa0;
+    --arcane-glow: rgba(107,79,160,0.25);
+    --text: #d4c9b0;
+    --text-dim: #7a7060;
+    --text-bright: #f0e8d0;
+    --success: #2a6640;
+    --error: #6b1a1a;
+    --radius: 4px;
+    --radius-lg: 8px;
+    --shadow: 0 8px 32px rgba(0,0,0,0.6);
+    --glow: 0 0 20px rgba(201,168,76,0.15);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--obsidian);
+    color: var(--text);
+    font-family: 'Crimson Text', Georgia, serif;
+    font-size: 17px;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Subtle background texture */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      radial-gradient(ellipse 80% 50% at 50% -10%, rgba(107,79,160,0.08) 0%, transparent 70%),
+      radial-gradient(ellipse 60% 40% at 80% 100%, rgba(139,26,26,0.05) 0%, transparent 60%),
+      url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.01'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* ── Header ── */
+  header {
+    position: relative;
+    z-index: 10;
+    padding: 28px 40px 0;
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding-bottom: 20px;
+  }
+
+  .logo-sigil {
+    width: 42px;
+    height: 42px;
+    opacity: 0.85;
+    filter: drop-shadow(0 0 8px rgba(201,168,76,0.4));
+  }
+
+  .logo-text {
+    font-family: 'Cinzel Decorative', serif;
+    font-size: 18px;
+    color: var(--gold);
+    letter-spacing: 0.05em;
+    line-height: 1.1;
+    text-shadow: 0 0 30px rgba(201,168,76,0.3);
+  }
+  .logo-text span {
+    display: block;
+    font-family: 'Cinzel', serif;
+    font-size: 11px;
+    font-weight: 400;
+    color: var(--text-dim);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+  }
+
+  .api-badge {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-bottom: 20px;
+    font-family: 'Cinzel', serif;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    color: var(--text-dim);
+  }
+  .api-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--gold-dim);
+    transition: background 0.3s;
+  }
+  .api-dot.connected { background: #3a9e5f; box-shadow: 0 0 8px rgba(58,158,95,0.6); }
+  .api-dot.error { background: #9e3a3a; box-shadow: 0 0 8px rgba(158,58,58,0.6); }
+
+  /* ── Tabs ── */
+  nav.tabs {
+    position: relative;
+    z-index: 10;
+    display: flex;
+    gap: 0;
+    padding: 0 40px;
+    border-bottom: 1px solid var(--border);
+    background: var(--obsidian);
+  }
+
+  .tab-btn {
+    position: relative;
+    padding: 16px 28px;
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    font-family: 'Cinzel', serif;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: color 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+  }
+  .tab-btn::after {
+    content: '';
+    position: absolute;
+    bottom: -1px; left: 0; right: 0;
+    height: 2px;
+    background: var(--gold);
+    transform: scaleX(0);
+    transition: transform 0.2s;
+  }
+  .tab-btn:hover { color: var(--text); }
+  .tab-btn.active { color: var(--gold); }
+  .tab-btn.active::after { transform: scaleX(1); }
+
+  .tab-icon { font-size: 14px; opacity: 0.8; }
+
+  /* ── Main layout ── */
+  main {
+    position: relative;
+    z-index: 5;
+    display: flex;
+    gap: 0;
+    min-height: calc(100vh - 115px);
+  }
+
+  /* ── Panels ── */
+  .tab-pane { display: none; width: 100%; }
+  .tab-pane.active { display: flex; }
+
+  .controls-col {
+    width: 380px;
+    min-width: 380px;
+    padding: 32px 32px 32px 40px;
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    background: linear-gradient(180deg, rgba(20,20,30,0.5) 0%, transparent 100%);
+    overflow-y: auto;
+    max-height: calc(100vh - 115px);
+  }
+
+  .results-col {
+    flex: 1;
+    padding: 32px 40px;
+    overflow-y: auto;
+    max-height: calc(100vh - 115px);
+  }
+
+  /* ── Form elements ── */
+  .field { display: flex; flex-direction: column; gap: 6px; }
+
+  label {
+    font-family: 'Cinzel', serif;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--gold-dim);
+  }
+
+  input[type="text"],
+  input[type="number"],
+  input[type="url"],
+  textarea,
+  select {
+    background: var(--stone);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text-bright);
+    font-family: 'Crimson Text', Georgia, serif;
+    font-size: 16px;
+    padding: 10px 12px;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    width: 100%;
+  }
+  input:focus, textarea:focus, select:focus {
+    border-color: var(--gold-dim);
+    box-shadow: 0 0 0 3px rgba(201,168,76,0.08);
+  }
+  textarea { resize: vertical; min-height: 80px; line-height: 1.5; }
+  select { appearance: none; cursor: pointer; }
+  select option { background: var(--stone); }
+
+  .field-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  input[type="checkbox"] {
+    width: 16px; height: 16px;
+    accent-color: var(--gold);
+    cursor: pointer;
+  }
+  .toggle-row label {
+    font-family: 'Cinzel', serif;
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    cursor: pointer;
+  }
+
+  /* Range slider */
+  input[type="range"] {
+    -webkit-appearance: none;
+    width: 100%;
+    height: 3px;
+    background: var(--border);
+    border-radius: 2px;
+    outline: none;
+    padding: 0;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px; height: 14px;
+    background: var(--gold);
+    border-radius: 50%;
+    box-shadow: 0 0 6px rgba(201,168,76,0.5);
+    transition: box-shadow 0.2s;
+  }
+  input[type="range"]:hover::-webkit-slider-thumb {
+    box-shadow: 0 0 12px rgba(201,168,76,0.7);
+  }
+
+  .range-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .range-row input[type="range"] { flex: 1; }
+  .range-val {
+    font-family: 'Cinzel', serif;
+    font-size: 11px;
+    color: var(--gold);
+    min-width: 30px;
+    text-align: right;
+  }
+
+  /* ── Buttons ── */
+  .btn-primary {
+    position: relative;
+    width: 100%;
+    padding: 14px 20px;
+    background: linear-gradient(135deg, #2a1f0a 0%, #1a1208 100%);
+    border: 1px solid var(--gold-dim);
+    border-radius: var(--radius);
+    color: var(--gold);
+    font-family: 'Cinzel', serif;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    cursor: pointer;
+    overflow: hidden;
+    transition: border-color 0.2s, box-shadow 0.2s, color 0.2s;
+    margin-top: 4px;
+  }
+  .btn-primary::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(201,168,76,0.1), rgba(201,168,76,0.04));
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+  .btn-primary:hover {
+    border-color: var(--gold);
+    color: var(--gold-bright);
+    box-shadow: var(--glow), inset 0 0 20px rgba(201,168,76,0.05);
+  }
+  .btn-primary:hover::before { opacity: 1; }
+  .btn-primary:active { transform: translateY(1px); }
+  .btn-primary:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  .btn-ghost {
+    padding: 8px 16px;
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text-dim);
+    font-family: 'Cinzel', serif;
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: border-color 0.2s, color 0.2s;
+  }
+  .btn-ghost:hover { border-color: var(--gold-dim); color: var(--text); }
+
+  /* ── Section headings ── */
+  .section-title {
+    font-family: 'Cinzel', serif;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    color: var(--text);
+    text-transform: uppercase;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .section-title::before {
+    content: '';
+    display: block;
+    width: 3px; height: 16px;
+    background: var(--gold);
+    border-radius: 2px;
+  }
+
+  .divider {
+    height: 1px;
+    background: var(--border);
+    margin: 4px 0;
+  }
+
+  /* ── Provider pills ── */
+  .provider-pills {
+    display: flex;
+    gap: 8px;
+  }
+  .pill {
+    flex: 1;
+    padding: 9px 12px;
+    background: var(--stone);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text-dim);
+    font-family: 'Cinzel', serif;
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.15s;
+  }
+  .pill:hover { border-color: var(--gold-dim); color: var(--text); }
+  .pill.active {
+    background: rgba(201,168,76,0.08);
+    border-color: var(--gold);
+    color: var(--gold);
+  }
+
+  /* ── Style grid ── */
+  .style-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+  }
+  .style-chip {
+    padding: 7px 8px;
+    background: var(--stone);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text-dim);
+    font-family: 'Cinzel', serif;
+    font-size: 9px;
+    letter-spacing: 0.08em;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .style-chip:hover { border-color: var(--gold-dim); color: var(--text); }
+  .style-chip.active {
+    background: rgba(201,168,76,0.08);
+    border-color: var(--gold);
+    color: var(--gold);
+  }
+
+  /* ── Results area ── */
+  .results-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 24px;
+  }
+
+  .results-title {
+    font-family: 'Cinzel', serif;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.15em;
+    color: var(--text-dim);
+    text-transform: uppercase;
+  }
+
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 300px;
+    gap: 16px;
+    color: var(--text-dim);
+    opacity: 0.5;
+  }
+  .empty-state-sigil {
+    font-size: 48px;
+    opacity: 0.3;
+    filter: grayscale(1);
+  }
+  .empty-state p {
+    font-family: 'Cinzel', serif;
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+  }
+
+  /* ── Image grid ── */
+  .image-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 16px;
+  }
+
+  .image-card {
+    position: relative;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    transition: border-color 0.2s, transform 0.2s;
+    animation: fadeIn 0.4s ease;
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .image-card:hover {
+    border-color: var(--gold-dim);
+    transform: translateY(-2px);
+  }
+
+  .image-card img {
+    width: 100%;
+    display: block;
+    aspect-ratio: 1;
+    object-fit: cover;
+    cursor: pointer;
+  }
+
+  .image-card-actions {
+    display: flex;
+    gap: 8px;
+    padding: 10px;
+    background: var(--stone);
+    border-top: 1px solid var(--border);
+  }
+  .image-card-actions .btn-ghost { flex: 1; padding: 6px; font-size: 9px; }
+
+  /* ── Status messages ── */
+  .status-bar {
+    display: none;
+    padding: 12px 16px;
+    border-radius: var(--radius);
+    font-family: 'Cinzel', serif;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    animation: fadeIn 0.3s ease;
+  }
+  .status-bar.loading {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: rgba(107,79,160,0.15);
+    border: 1px solid var(--arcane-glow);
+    color: #a890d0;
+  }
+  .status-bar.success {
+    display: block;
+    background: rgba(42,102,64,0.2);
+    border: 1px solid rgba(58,158,95,0.3);
+    color: #6dba8f;
+  }
+  .status-bar.error {
+    display: block;
+    background: rgba(107,26,26,0.3);
+    border: 1px solid rgba(158,58,58,0.4);
+    color: #e08080;
+  }
+
+  .spinner {
+    width: 14px; height: 14px;
+    border: 2px solid rgba(168,144,208,0.2);
+    border-top-color: #a890d0;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    flex-shrink: 0;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Video section ── */
+  .video-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    animation: fadeIn 0.4s ease;
+  }
+
+  video {
+    width: 100%;
+    display: block;
+    background: #000;
+    max-height: 480px;
+  }
+
+  .video-status {
+    padding: 16px 20px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: var(--stone);
+    border-top: 1px solid var(--border);
+    font-family: 'Cinzel', serif;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    color: var(--text-dim);
+  }
+  .status-pending { color: #a890d0; }
+  .status-processing { color: var(--gold); }
+  .status-done { color: #6dba8f; }
+  .status-failed { color: #e08080; }
+
+  /* ── Upscale comparison ── */
+  .comparison-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  .comparison-panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+  }
+  .comparison-label {
+    padding: 8px 14px;
+    background: var(--stone);
+    font-family: 'Cinzel', serif;
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    border-bottom: 1px solid var(--border);
+  }
+  .comparison-panel img {
+    width: 100%;
+    display: block;
+    object-fit: contain;
+    max-height: 400px;
+  }
+
+  /* ── Scroll bar ── */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: var(--obsidian); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--gold-dim); }
+
+  /* ── Loading shimmer ── */
+  .shimmer {
+    background: linear-gradient(90deg, var(--panel) 25%, var(--slate) 50%, var(--panel) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.4s infinite;
+    border-radius: var(--radius-lg);
+    aspect-ratio: 1;
+  }
+  @keyframes shimmer { to { background-position: -200% 0; } }
+
+  /* URL pill list for edit tab */
+  .url-pills { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+  .url-pill {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--stone);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 6px 10px;
+    font-size: 13px;
+    color: var(--text-dim);
+    word-break: break-all;
+  }
+  .url-pill-text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .url-pill-del {
+    background: none; border: none; color: var(--crimson);
+    cursor: pointer; font-size: 16px; line-height: 1; padding: 0 2px;
+    opacity: 0.7; transition: opacity 0.2s;
+  }
+  .url-pill-del:hover { opacity: 1; }
+
+  /* ── Add URL row ── */
+  .add-url-row { display: flex; gap: 8px; }
+  .add-url-row input { flex: 1; }
+  .btn-add {
+    padding: 10px 14px;
+    background: var(--stone);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--gold-dim);
+    font-size: 18px;
+    cursor: pointer;
+    transition: border-color 0.2s, color 0.2s;
+    line-height: 1;
+  }
+  .btn-add:hover { border-color: var(--gold); color: var(--gold); }
+
+  /* ── Hint text ── */
+  .hint { font-size: 13px; color: var(--text-dim); line-height: 1.4; font-style: italic; }
+
+  /* ── Modal / lightbox ── */
+  .lightbox {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    background: rgba(0,0,0,0.92);
+    align-items: center;
+    justify-content: center;
+    cursor: zoom-out;
+  }
+  .lightbox.open { display: flex; }
+  .lightbox img {
+    max-width: 90vw;
+    max-height: 90vh;
+    object-fit: contain;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow);
+    cursor: default;
+  }
+  .lightbox-close {
+    position: absolute;
+    top: 20px; right: 24px;
+    background: none; border: none;
+    color: var(--text-dim); font-size: 28px;
+    cursor: pointer; transition: color 0.2s;
+  }
+  .lightbox-close:hover { color: var(--text-bright); }
+
+  /* ── Notification toast ── */
+  .toast {
+    position: fixed;
+    bottom: 28px; right: 28px;
+    background: var(--slate);
+    border: 1px solid var(--gold-dim);
+    border-radius: var(--radius);
+    padding: 12px 18px;
+    font-family: 'Cinzel', serif;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    color: var(--gold);
+    box-shadow: var(--shadow);
+    z-index: 999;
+    transform: translateY(80px);
+    opacity: 0;
+    transition: transform 0.3s, opacity 0.3s;
+  }
+  .toast.show { transform: translateY(0); opacity: 1; }
+
+  /* ── Describe / Vision output cards ── */
+  .prompt-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    animation: fadeIn 0.4s ease;
+    margin-bottom: 20px;
+  }
+  .prompt-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    background: var(--stone);
+    border-bottom: 1px solid var(--border);
+  }
+  .prompt-card-title {
+    font-family: 'Cinzel', serif;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--gold);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .prompt-card-badge {
+    font-family: 'Cinzel', serif;
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    color: var(--text-dim);
+    background: var(--border);
+    padding: 2px 8px;
+    border-radius: 20px;
+  }
+  .prompt-card-body {
+    padding: 18px 20px;
+    font-size: 16px;
+    line-height: 1.65;
+    color: var(--text-bright);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .prompt-card-footer {
+    display: flex;
+    gap: 8px;
+    padding: 10px 16px;
+    border-top: 1px solid var(--border);
+    background: var(--stone);
+  }
+  .source-thumb {
+    width: 100%;
+    max-height: 220px;
+    object-fit: contain;
+    display: block;
+    background: #000;
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border);
+    margin-bottom: 20px;
+    cursor: zoom-in;
+  }
+
+
+  /* ── NSFW result grid ── */
+  .nsfw-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 14px;
+  }
+  .nsfw-card {
+    background: var(--panel);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    border: 2px solid var(--border);
+    transition: border-color 0.2s;
+  }
+  .nsfw-card.sfw  { border-color: #2d6a4f; }
+  .nsfw-card.nsfw { border-color: #7f1d1d; }
+  .nsfw-card img  { width: 100%; aspect-ratio: 1; object-fit: cover; display: block; }
+  .nsfw-badge {
+    padding: 6px 10px;
+    font-family: 'Cinzel', serif;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-align: center;
+  }
+  .nsfw-badge.sfw  { background: #1a3a2a; color: #86efac; }
+  .nsfw-badge.nsfw { background: #450a0a; color: #fca5a5; }
+  .nsfw-summary {
+    font-family: 'Cinzel', serif;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    color: var(--text-dim);
+    margin-bottom: 16px;
+  }
+
+  /* ── Chat staged changes ── */
+  .agent-response {
+    background: var(--stone);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 16px 18px;
+    margin-bottom: 20px;
+    font-size: 15px;
+    line-height: 1.65;
+    color: var(--text-bright);
+    white-space: pre-wrap;
+  }
+  .agent-response-label {
+    font-family: 'Cinzel', serif;
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    color: var(--gold);
+    text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+  .staged-change-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    margin-bottom: 14px;
+    animation: fadeIn 0.3s ease;
+  }
+  .staged-change-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    background: var(--stone);
+    border-bottom: 1px solid var(--border);
+    gap: 10px;
+  }
+  .staged-op-badge {
+    font-family: 'Cinzel', serif;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    padding: 2px 8px;
+    border-radius: 20px;
+    text-transform: uppercase;
+    flex-shrink: 0;
+  }
+  .op-create  { background: #1a3a2a; color: #86efac; }
+  .op-update  { background: #1e3a5f; color: #93c5fd; }
+  .op-append  { background: #2d1b6b; color: #c4b5fd; }
+  .op-delete  { background: #450a0a; color: #fca5a5; }
+  .staged-path {
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    color: var(--text);
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .staged-change-body {
+    padding: 14px 16px;
+    max-height: 200px;
+    overflow-y: auto;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--text-dim);
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+  .review-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 20px;
+    flex-wrap: wrap;
+  }
+  .btn-confirm {
+    background: linear-gradient(135deg, #2d6a4f, #1a4035);
+    color: #86efac;
+    border: 1px solid #2d6a4f;
+    border-radius: var(--radius);
+    padding: 10px 22px;
+    font-family: 'Cinzel', serif;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .btn-confirm:hover { filter: brightness(1.2); }
+  .btn-discard {
+    background: linear-gradient(135deg, #450a0a, #2d0707);
+    color: #fca5a5;
+    border: 1px solid #7f1d1d;
+    border-radius: var(--radius);
+    padding: 10px 22px;
+    font-family: 'Cinzel', serif;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .btn-discard:hover { filter: brightness(1.2); }
+  .modify-section {
+    background: var(--stone);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 14px 16px;
+    margin-top: 16px;
+  }
+  .modify-section label {
+    display: block;
+    font-family: 'Cinzel', serif;
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    color: var(--gold);
+    margin-bottom: 8px;
+  }
+  .modify-section textarea {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    padding: 10px 12px;
+    font-family: 'Crimson Text', serif;
+    font-size: 15px;
+    resize: vertical;
+    box-sizing: border-box;
+    margin-bottom: 8px;
+  }
+
+  /* ── Vault file list ── */
+  .vault-file-list { display: flex; flex-direction: column; gap: 6px; }
+  .vault-file-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--stone);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 8px 14px;
+    font-size: 13px;
+    gap: 10px;
+  }
+  .vault-file-name {
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    color: var(--text);
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .vault-file-score {
+    font-family: 'Cinzel', serif;
+    font-size: 9px;
+    color: var(--text-dim);
+    flex-shrink: 0;
+  }
+
+</style>
+</head>
+<body>
+
+<!-- ── Header ──────────────────────────────────────────────────── -->
+<header>
+  <div class="logo">
+    <svg class="logo-sigil" viewBox="0 0 42 42" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <polygon points="21,2 39,33 3,33" stroke="#c9a84c" stroke-width="1.5" fill="none" opacity="0.9"/>
+      <polygon points="21,40 3,9 39,9" stroke="#c9a84c" stroke-width="1.5" fill="none" opacity="0.5"/>
+      <circle cx="21" cy="21" r="5" stroke="#c9a84c" stroke-width="1" fill="rgba(201,168,76,0.08)"/>
+      <circle cx="21" cy="21" r="12" stroke="#c9a84c" stroke-width="0.5" fill="none" opacity="0.3"/>
+    </svg>
+    <div class="logo-text">
+      RPG Media Studio
+      <span>Vault Agent Interface</span>
+    </div>
+  </div>
+  <div class="api-badge">
+    <div class="api-dot" id="apiDot"></div>
+    <span id="apiStatus">Connecting...</span>
+  </div>
+</header>
+
+<!-- ── Tabs ─────────────────────────────────────────────────────── -->
+<nav class="tabs">
+  <button class="tab-btn active" data-tab="generate">
+    <span class="tab-icon">✦</span> Generate
+  </button>
+  <button class="tab-btn" data-tab="edit">
+    <span class="tab-icon">◈</span> Edit
+  </button>
+  <button class="tab-btn" data-tab="upscale">
+    <span class="tab-icon">⬡</span> Upscale
+  </button>
+  <button class="tab-btn" data-tab="describe">
+    <span class="tab-icon">👁</span> Describe
+  </button>
+  <button class="tab-btn" data-tab="video">
+    <span class="tab-icon">▶</span> Video
+  </button>
+  <button class="tab-btn" data-tab="nsfw">
+    <span class="tab-icon">🛡</span> NSFW
+  </button>
+  <button class="tab-btn" data-tab="chat">
+    <span class="tab-icon">🗝</span> Vault Chat
+  </button>
+  <button class="tab-btn" data-tab="vault">
+    <span class="tab-icon">📚</span> Vault
+  </button>
+</nav>
+
+<main>
+
+  <!-- ════════════════════════════════════════════════
+       TAB: GENERATE
+  ════════════════════════════════════════════════ -->
+  <div class="tab-pane active" id="tab-generate">
+    <div class="controls-col">
+      <div class="section-title">Image Generation</div>
+
+      <div class="field">
+        <label>Provider</label>
+        <div class="provider-pills">
+          <div class="pill active" data-val="aurora" id="pill-aurora" onclick="selectProvider('aurora')">Aurora</div>
+          <div class="pill" data-val="flux2pro" id="pill-flux2pro" onclick="selectProvider('flux2pro')">Flux 2 Pro</div>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Prompt</label>
+        <textarea id="gen-prompt" placeholder="A weathered dwarven fortress carved into volcanic rock, glowing forge-light spilling from arrow slits, dawn mist rolling across the mountain pass…" rows="4"></textarea>
+      </div>
+
+      <div class="toggle-row" id="vault-toggle-row">
+        <input type="checkbox" id="gen-use-vault" />
+        <label for="gen-use-vault">Enrich prompt from vault</label>
+      </div>
+      <div class="field" id="vault-desc-field" style="display:none">
+        <label>Vault Description</label>
+        <input type="text" id="gen-vault-desc" placeholder="e.g. the Ironspire fortress, Valdoria" />
+      </div>
+
+      <div class="field">
+        <label>Style Preset</label>
+        <div class="style-grid" id="styleGrid"></div>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label>Aspect Ratio</label>
+          <select id="gen-aspect">
+            <option value="auto">Auto</option>
+            <option value="1:1">1:1 Square</option>
+            <option value="16:9" selected>16:9 Wide</option>
+            <option value="4:3">4:3</option>
+            <option value="3:4">3:4 Portrait</option>
+            <option value="9:16">9:16 Tall</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Count</label>
+          <input type="number" id="gen-n" value="1" min="1" max="4" />
+        </div>
+      </div>
+
+      <!-- Aurora-only -->
+      <div id="aurora-opts">
+        <div class="field">
+          <label>Resolution</label>
+          <select id="gen-resolution">
+            <option value="1k" selected>1k</option>
+            <option value="2k">2k</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Flux-only -->
+      <div id="flux-opts" style="display:none">
+        <div class="field">
+          <label>Safety Tolerance</label>
+          <div class="range-row">
+            <input type="range" id="gen-safety" min="1" max="6" value="2" step="1" oninput="document.getElementById('safety-val').textContent=this.value" />
+            <span class="range-val" id="safety-val">2</span>
+          </div>
+          <p class="hint" style="margin-top:4px">1 = most strict · 6 = permissive</p>
+        </div>
+      </div>
+
+      <div id="gen-status" class="status-bar"></div>
+      <button class="btn-primary" id="gen-btn" onclick="runGenerate()">
+        ✦ &nbsp; Conjure Images
+      </button>
+    </div>
+
+    <div class="results-col">
+      <div class="results-header">
+        <div class="results-title">Generated Images</div>
+        <button class="btn-ghost" onclick="clearResults('gen-grid')">Clear</button>
+      </div>
+      <div id="gen-grid" class="image-grid">
+        <div class="empty-state">
+          <div class="empty-state-sigil">✦</div>
+          <p>Awaiting your incantation</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════
+       TAB: EDIT
+  ════════════════════════════════════════════════ -->
+  <div class="tab-pane" id="tab-edit">
+    <div class="controls-col">
+      <div class="section-title">Image Editing</div>
+
+      <div class="field">
+        <label>Edit Prompt</label>
+        <textarea id="edit-prompt" placeholder="Keep the face and pose unchanged. Replace the iron armour with dark elven robes of deep violet, embroidered with silver runes." rows="4"></textarea>
+      </div>
+
+      <div class="field">
+        <label>Source Images</label>
+        <p class="hint">Add 1–10 image URLs. Multiple URLs = composite edit.</p>
+        <div class="add-url-row" style="margin-top:8px">
+          <input type="text" id="edit-url-input" placeholder="https://…" />
+          <button class="btn-add" onclick="addEditUrl()">+</button>
+        </div>
+        <div class="url-pills" id="edit-url-pills"></div>
+      </div>
+
+      <div class="field">
+        <label>Style Preset</label>
+        <div class="style-grid" id="editStyleGrid"></div>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label>Aspect Ratio</label>
+          <select id="edit-aspect">
+            <option value="auto">Auto</option>
+            <option value="1:1">1:1</option>
+            <option value="16:9" selected>16:9</option>
+            <option value="4:3">4:3</option>
+            <option value="3:4">3:4</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Resolution</label>
+          <select id="edit-res">
+            <option value="1k" selected>1k</option>
+            <option value="2k">2k</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Count</label>
+        <input type="number" id="edit-n" value="1" min="1" max="4" />
+      </div>
+
+      <div id="edit-status" class="status-bar"></div>
+      <button class="btn-primary" id="edit-btn" onclick="runEdit()">
+        ◈ &nbsp; Apply Edit
+      </button>
+    </div>
+
+    <div class="results-col">
+      <div class="results-header">
+        <div class="results-title">Edited Images</div>
+        <button class="btn-ghost" onclick="clearResults('edit-grid')">Clear</button>
+      </div>
+      <div id="edit-grid" class="image-grid">
+        <div class="empty-state">
+          <div class="empty-state-sigil">◈</div>
+          <p>Add a source image and prompt</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════
+       TAB: UPSCALE
+  ════════════════════════════════════════════════ -->
+  <div class="tab-pane" id="tab-upscale">
+    <div class="controls-col">
+      <div class="section-title">Clarity Upscaler</div>
+
+      <div class="field">
+        <label>Image URL</label>
+        <input type="text" id="upscale-url" placeholder="https://…" />
+      </div>
+
+      <div class="field">
+        <label>Enhancement Prompt <span style="font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></label>
+        <textarea id="upscale-prompt" placeholder="Ultra-detailed fantasy illustration, sharp linework, rich textures, cinematic lighting" rows="3"></textarea>
+      </div>
+
+      <div class="field">
+        <label>Scale Factor</label>
+        <div class="range-row">
+          <input type="range" id="upscale-scale" min="1" max="4" value="2" step="0.5"
+            oninput="document.getElementById('scale-val').textContent=this.value+'×'" />
+          <span class="range-val" id="scale-val">2×</span>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Creativity</label>
+        <div class="range-row">
+          <input type="range" id="upscale-creativity" min="0" max="1" value="0.35" step="0.05"
+            oninput="document.getElementById('creativity-val').textContent=parseFloat(this.value).toFixed(2)" />
+          <span class="range-val" id="creativity-val">0.35</span>
+        </div>
+        <p class="hint" style="margin-top:4px">Higher = more detail added; lower = more faithful</p>
+      </div>
+
+      <div class="field">
+        <label>Detail Enhancement</label>
+        <div class="range-row">
+          <input type="range" id="upscale-detail" min="0" max="1" value="1" step="0.05"
+            oninput="document.getElementById('detail-val').textContent=parseFloat(this.value).toFixed(2)" />
+          <span class="range-val" id="detail-val">1.00</span>
+        </div>
+      </div>
+
+      <div class="toggle-row">
+        <input type="checkbox" id="upscale-sharpen" checked />
+        <label for="upscale-sharpen">Sharpen edges</label>
+      </div>
+
+      <div class="toggle-row">
+        <input type="checkbox" id="upscale-safety" checked />
+        <label for="upscale-safety">Safety checker</label>
+      </div>
+
+      <div id="upscale-status" class="status-bar"></div>
+      <button class="btn-primary" id="upscale-btn" onclick="runUpscale()">
+        ⬡ &nbsp; Enhance Image
+      </button>
+    </div>
+
+    <div class="results-col">
+      <div class="results-header">
+        <div class="results-title">Upscale Result</div>
+        <button class="btn-ghost" onclick="clearUpscaleResult()">Clear</button>
+      </div>
+      <div id="upscale-result">
+        <div class="empty-state">
+          <div class="empty-state-sigil">⬡</div>
+          <p>Awaiting source image</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════
+       TAB: VIDEO
+  ════════════════════════════════════════════════ -->
+  <div class="tab-pane" id="tab-video">
+    <div class="controls-col">
+      <div class="section-title">Video Generation</div>
+
+      <div class="field">
+        <label>Mode</label>
+        <div class="provider-pills">
+          <div class="pill active" id="vid-mode-text" onclick="selectVideoMode('text')">Text → Video</div>
+          <div class="pill" id="vid-mode-image" onclick="selectVideoMode('image')">Image → Video</div>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Prompt</label>
+        <textarea id="vid-prompt" placeholder="A cloaked figure descends stone stairs into a torchlit crypt, shadows writhing on the walls, dust drifting in shafts of amber light…" rows="4"></textarea>
+      </div>
+
+      <div class="field" id="vid-image-field" style="display:none">
+        <label>Source Image URL</label>
+        <input type="text" id="vid-image-url" placeholder="https://… (used as first frame)" />
+      </div>
+
+      <div class="toggle-row">
+        <input type="checkbox" id="vid-use-vault" />
+        <label for="vid-use-vault">Enrich prompt from vault</label>
+      </div>
+      <div class="field" id="vid-vault-field" style="display:none">
+        <label>Vault Description</label>
+        <input type="text" id="vid-vault-desc" placeholder="e.g. the Crypt of Varek, Valdoria" />
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label>Duration</label>
+          <select id="vid-duration">
+            <option value="5">5 sec</option>
+            <option value="10" selected>10 sec</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Aspect Ratio</label>
+          <select id="vid-aspect">
+            <option value="16:9" selected>16:9</option>
+            <option value="9:16">9:16</option>
+            <option value="1:1">1:1</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Resolution</label>
+        <select id="vid-res">
+          <option value="480p" selected>480p</option>
+          <option value="720p">720p</option>
+          <option value="1080p">1080p</option>
+        </select>
+      </div>
+
+      <p class="hint">Video generation takes 1–3 minutes. The server polls for completion automatically.</p>
+
+      <div id="vid-status" class="status-bar"></div>
+      <button class="btn-primary" id="vid-btn" onclick="runVideo()">
+        ▶ &nbsp; Generate Video
+      </button>
+    </div>
+
+    <div class="results-col">
+      <div class="results-header">
+        <div class="results-title">Generated Videos</div>
+        <button class="btn-ghost" onclick="clearResults('vid-grid')">Clear</button>
+      </div>
+      <div id="vid-grid" style="display:flex;flex-direction:column;gap:20px">
+        <div class="empty-state">
+          <div class="empty-state-sigil">▶</div>
+          <p>No videos yet</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ════════════════════════════════════════════════
+       TAB: DESCRIBE
+  ════════════════════════════════════════════════ -->
+  <div class="tab-pane" id="tab-describe">
+    <div class="controls-col">
+      <div class="section-title">Vision Analysis</div>
+
+      <div class="field">
+        <label>Image URL</label>
+        <input type="text" id="desc-url" placeholder="https://… (must be publicly accessible)" />
+      </div>
+
+      <div class="field">
+        <label>Provider</label>
+        <div class="provider-pills">
+          <div class="pill active" id="desc-pill-claude" onclick="selectDescProvider('claude')">Claude</div>
+          <div class="pill" id="desc-pill-grok" onclick="selectDescProvider('grok')">Grok Vision</div>
+        </div>
+        <p class="hint" style="margin-top:6px">Claude = claude-opus-4-5 &nbsp;·&nbsp; Grok = grok-2-vision</p>
+      </div>
+
+      <p class="hint">
+        Sends the image to the chosen LLM with two prompts — one tuned for
+        Aurora / Grok Imagine, one optimised for Flux 2 Pro / SD3.
+      </p>
+
+      <div id="desc-status" class="status-bar"></div>
+      <button class="btn-primary" id="desc-btn" onclick="runDescribe()">
+        👁 &nbsp; Analyse Image
+      </button>
+    </div>
+
+    <div class="results-col">
+      <div class="results-header">
+        <div class="results-title">Prompt Descriptions</div>
+        <button class="btn-ghost" onclick="clearDescribe()">Clear</button>
+      </div>
+      <div id="desc-result">
+        <div class="empty-state">
+          <div class="empty-state-sigil">👁</div>
+          <p>Awaiting an image URL</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ════════════════════════════════════════════════
+       TAB: NSFW CHECK
+  ════════════════════════════════════════════════ -->
+  <div class="tab-pane" id="tab-nsfw">
+    <div class="controls-col">
+      <div class="section-title">NSFW Image Checker</div>
+
+      <div class="field">
+        <label>Image URLs <span style="font-weight:400;text-transform:none;letter-spacing:0">(one per line, max 10)</span></label>
+        <textarea id="nsfw-urls" rows="10"
+          placeholder="https://example.com/image1.jpg&#10;https://example.com/image2.jpg"></textarea>
+      </div>
+
+      <p class="hint">
+        Classifies each image as SFW or NSFW using fal-ai.
+        Useful before posting generated images to shared vaults or docs.
+      </p>
+
+      <div id="nsfw-status" class="status-bar"></div>
+      <button class="btn-primary" id="nsfw-btn" onclick="runNsfw()">
+        🛡 &nbsp; Check Images
+      </button>
+    </div>
+
+    <div class="results-col">
+      <div class="results-header">
+        <div class="results-title">Classification Results</div>
+        <button class="btn-ghost" onclick="clearNsfw()">Clear</button>
+      </div>
+      <div id="nsfw-result">
+        <div class="empty-state">
+          <div class="empty-state-sigil">🛡</div>
+          <p>Paste image URLs to classify</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════
+       TAB: VAULT CHAT
+  ════════════════════════════════════════════════ -->
+  <div class="tab-pane" id="tab-chat">
+    <div class="controls-col">
+      <div class="section-title">Vault Agent</div>
+
+      <div class="field">
+        <label>Provider</label>
+        <div class="provider-pills">
+          <div class="pill active" id="chat-pill-claude" onclick="selectChatProvider('claude')">Claude</div>
+          <div class="pill" id="chat-pill-grok" onclick="selectChatProvider('grok')">Grok</div>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Prompt</label>
+        <textarea id="chat-prompt" rows="8"
+          placeholder="e.g. Create a new NPC named Varek the Undying — a skeletal merchant who trades in secrets..."></textarea>
+      </div>
+
+      <div class="field">
+        <label>Vault Context Results</label>
+        <div class="range-row">
+          <input type="range" id="chat-topk" min="1" max="20" value="10" step="1"
+            oninput="document.getElementById('chat-topk-val').textContent=this.value" />
+          <span class="range-val" id="chat-topk-val">10</span>
+        </div>
+        <p class="hint" style="margin-top:4px">How many vault files to give the agent as context</p>
+      </div>
+
+      <p class="hint">
+        The agent will stage proposed file changes for your review before anything is written to disk.
+      </p>
+
+      <div id="chat-status" class="status-bar"></div>
+      <button class="btn-primary" id="chat-btn" onclick="runChat()">
+        🗝 &nbsp; Ask Agent
+      </button>
+    </div>
+
+    <div class="results-col">
+      <div class="results-header">
+        <div class="results-title">Staged Changes</div>
+        <button class="btn-ghost" onclick="clearChat()">Clear</button>
+      </div>
+      <div id="chat-result">
+        <div class="empty-state">
+          <div class="empty-state-sigil">🗝</div>
+          <p>Agent responses will appear here for review</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════
+       TAB: VAULT MANAGER
+  ════════════════════════════════════════════════ -->
+  <div class="tab-pane" id="tab-vault">
+    <div class="controls-col">
+      <div class="section-title">Vault Manager</div>
+
+      <div id="vault-status-card" class="prompt-card" style="margin-bottom:20px">
+        <div class="prompt-card-header">
+          <div class="prompt-card-title">📚 Vault Status</div>
+          <button class="btn-ghost" style="padding:4px 10px;font-size:9px" onclick="loadVaultStatus()">Refresh</button>
+        </div>
+        <div class="prompt-card-body" id="vault-status-body" style="font-size:13px;line-height:2">
+          Loading…
+        </div>
+      </div>
+
+      <button class="btn-primary" id="reindex-btn" onclick="runReindex()" style="margin-bottom:16px">
+        ↺ &nbsp; Re-index Vault
+      </button>
+
+      <div class="section-title" style="margin-top:8px">File Search</div>
+      <div class="field">
+        <input type="text" id="vault-search-query" placeholder="Search vault files…"
+          onkeydown="if(event.key==='Enter')runVaultSearch()" />
+      </div>
+      <button class="btn-primary" onclick="runVaultSearch()">Search Files</button>
+
+      <div id="vault-status" class="status-bar" style="margin-top:12px"></div>
+    </div>
+
+    <div class="results-col">
+      <div class="results-header">
+        <div class="results-title">Files</div>
+        <button class="btn-ghost" onclick="loadAllFiles()">List All</button>
+      </div>
+      <div id="vault-result">
+        <div class="empty-state">
+          <div class="empty-state-sigil">📚</div>
+          <p>Search or list all vault files</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<!-- ── Lightbox ────────────────────────────────────────────────── -->
+<div class="lightbox" id="lightbox" onclick="closeLightbox(event)">
+  <button class="lightbox-close" onclick="closeLightbox()">✕</button>
+  <img id="lightbox-img" src="" alt="" />
+</div>
+
+<!-- ── Toast ──────────────────────────────────────────────────── -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ── Config ──────────────────────────────────────────────────────────────────
+const API = 'http://localhost:8000';
+
+// ── Styles ──────────────────────────────────────────────────────────────────
+const STYLES = [
+  'photorealistic','dark_fantasy','oil_painting','watercolor',
+  'concept_art','pencil_sketch','anime','ink_wash'
+];
+const STYLE_LABELS = {
+  photorealistic:'Photo',dark_fantasy:'Dark Fantasy',oil_painting:'Oil Paint',
+  watercolor:'Watercolor',concept_art:'Concept Art',pencil_sketch:'Pencil',
+  anime:'Anime',ink_wash:'Ink Wash'
+};
+
+// ── State ────────────────────────────────────────────────────────────────────
+let currentProvider = 'aurora';
+let currentGenStyle = null;
+let currentEditStyle = null;
+let editUrls = [];
+let videoMode = 'text';
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  buildStyleGrid('styleGrid', 'gen');
+  buildStyleGrid('editStyleGrid', 'edit');
+  checkApiHealth();
+
+  // Vault checkbox for generate
+  document.getElementById('gen-use-vault').addEventListener('change', function() {
+    document.getElementById('vault-desc-field').style.display = this.checked ? 'flex' : 'none';
+  });
+
+  // Vault checkbox for video
+  document.getElementById('vid-use-vault').addEventListener('change', function() {
+    document.getElementById('vid-vault-field').style.display = this.checked ? 'flex' : 'none';
+  });
+});
+
+// ── API health check ─────────────────────────────────────────────────────────
+async function checkApiHealth() {
+  const dot = document.getElementById('apiDot');
+  const label = document.getElementById('apiStatus');
+  // Try /health first, fall back to /status and /providers for older vault app versions
+  for (const endpoint of ['/health', '/status', '/providers']) {
+    try {
+      const r = await fetch(`${API}${endpoint}`, { signal: AbortSignal.timeout(4000) });
+      if (r.ok) {
+        const data = await r.json().catch(() => ({}));
+        dot.className = 'api-dot connected';
+        label.textContent = 'API Connected';
+        if (data.xai_key_set !== undefined) {
+          label.title = [
+            data.xai_key_set ? 'xAI ✓' : 'xAI ✗',
+            data.fal_key_set ? 'fal ✓' : 'fal ✗',
+          ].join('  ');
+        }
+        return;
+      }
+    } catch { /* try next */ }
+  }
+  dot.className = 'api-dot error';
+  label.textContent = 'API Offline';
+  label.title = `Could not reach ${API} — is the vault app running on port 8000?`;
+}
+
+// ── Tab switching ────────────────────────────────────────────────────────────
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+  });
+});
+
+// ── Provider toggle ──────────────────────────────────────────────────────────
+function selectProvider(p) {
+  currentProvider = p;
+  document.getElementById('pill-aurora').classList.toggle('active', p === 'aurora');
+  document.getElementById('pill-flux2pro').classList.toggle('active', p === 'flux2pro');
+  document.getElementById('aurora-opts').style.display = p === 'aurora' ? 'flex' : 'none';
+  document.getElementById('flux-opts').style.display = p === 'flux2pro' ? 'flex' : 'none';
+  document.getElementById('aurora-opts').style.flexDirection = 'column';
+}
+
+// ── Style grids ──────────────────────────────────────────────────────────────
+function buildStyleGrid(containerId, prefix) {
+  const g = document.getElementById(containerId);
+  g.innerHTML = STYLES.map(s => `
+    <div class="style-chip" id="${prefix}-style-${s}" onclick="selectStyle('${prefix}','${s}')">
+      ${STYLE_LABELS[s]}
+    </div>`).join('');
+}
+
+function selectStyle(prefix, s) {
+  const current = prefix === 'gen' ? currentGenStyle : currentEditStyle;
+  const newVal = current === s ? null : s;
+  if (prefix === 'gen') currentGenStyle = newVal;
+  else currentEditStyle = newVal;
+
+  STYLES.forEach(st => {
+    const el = document.getElementById(`${prefix}-style-${st}`);
+    if (el) el.classList.toggle('active', st === newVal);
+  });
+}
+
+// ── Video mode toggle ────────────────────────────────────────────────────────
+function selectVideoMode(m) {
+  videoMode = m;
+  document.getElementById('vid-mode-text').classList.toggle('active', m === 'text');
+  document.getElementById('vid-mode-image').classList.toggle('active', m === 'image');
+  document.getElementById('vid-image-field').style.display = m === 'image' ? 'flex' : 'none';
+  document.getElementById('vid-image-field').style.flexDirection = 'column';
+  document.getElementById('vid-image-field').style.gap = '6px';
+}
+
+// ── Edit URL management ──────────────────────────────────────────────────────
+function addEditUrl() {
+  const inp = document.getElementById('edit-url-input');
+  const url = inp.value.trim();
+  if (!url) return;
+  editUrls.push(url);
+  inp.value = '';
+  renderUrlPills();
+}
+document.getElementById('edit-url-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') { e.preventDefault(); addEditUrl(); }
+});
+
+function removeEditUrl(i) {
+  editUrls.splice(i, 1);
+  renderUrlPills();
+}
+
+function renderUrlPills() {
+  const c = document.getElementById('edit-url-pills');
+  if (!editUrls.length) { c.innerHTML = ''; return; }
+  c.innerHTML = editUrls.map((u, i) => `
+    <div class="url-pill">
+      <span class="url-pill-text" title="${u}">${u}</span>
+      <button class="url-pill-del" onclick="removeEditUrl(${i})">×</button>
+    </div>`).join('');
+}
+
+// ── Status helpers ───────────────────────────────────────────────────────────
+function setStatus(id, type, msg) {
+  const el = document.getElementById(id);
+  el.className = `status-bar ${type}`;
+  if (type === 'loading') {
+    el.innerHTML = `<div class="spinner"></div><span>${msg}</span>`;
+  } else {
+    el.textContent = msg;
+  }
+}
+function clearStatus(id) {
+  const el = document.getElementById(id);
+  el.className = 'status-bar';
+  el.textContent = '';
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+// ── Lightbox ──────────────────────────────────────────────────────────────────
+function openLightbox(src) {
+  document.getElementById('lightbox-img').src = src;
+  document.getElementById('lightbox').classList.add('open');
+}
+function closeLightbox(e) {
+  if (!e || e.target !== document.getElementById('lightbox-img')) {
+    document.getElementById('lightbox').classList.remove('open');
+  }
+}
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeLightbox();
+});
+
+// ── Clear results ─────────────────────────────────────────────────────────────
+function clearResults(id) {
+  const el = document.getElementById(id);
+  const icon = id === 'gen-grid' ? '✦' : id === 'edit-grid' ? '◈' : '▶';
+  const msg = id === 'vid-grid' ? 'No videos yet' : 'Awaiting your incantation';
+  el.innerHTML = `<div class="empty-state"><div class="empty-state-sigil">${icon}</div><p>${msg}</p></div>`;
+}
+function clearUpscaleResult() {
+  document.getElementById('upscale-result').innerHTML =
+    `<div class="empty-state"><div class="empty-state-sigil">⬡</div><p>Awaiting source image</p></div>`;
+}
+
+// ── Render image card ─────────────────────────────────────────────────────────
+function makeImageCard(url, extraActions = '') {
+  const card = document.createElement('div');
+  card.className = 'image-card';
+  card.innerHTML = `
+    <img src="${url}" alt="Generated image" onclick="openLightbox('${url}')" loading="lazy" />
+    <div class="image-card-actions">
+      <button class="btn-ghost" onclick="copyUrl('${url}')">Copy URL</button>
+      <button class="btn-ghost" onclick="window.open('${url}','_blank')">Open</button>
+      ${extraActions}
+    </div>`;
+  return card;
+}
+
+function copyUrl(url) {
+  navigator.clipboard.writeText(url).then(() => showToast('URL copied to clipboard'));
+}
+
+function removeEmptyState(gridId) {
+  const grid = document.getElementById(gridId);
+  const empty = grid.querySelector('.empty-state');
+  if (empty) empty.remove();
+}
+
+// ── GENERATE ─────────────────────────────────────────────────────────────────
+async function runGenerate() {
+  const prompt = document.getElementById('gen-prompt').value.trim();
+  if (!prompt) { setStatus('gen-status','error','Prompt is required'); return; }
+
+  const btn = document.getElementById('gen-btn');
+  btn.disabled = true;
+  setStatus('gen-status','loading','Conjuring images…');
+
+  const useVault = document.getElementById('gen-use-vault').checked;
+  const vaultDesc = document.getElementById('gen-vault-desc').value.trim();
+
+  const body = {
+    prompt,
+    provider: currentProvider,
+    n: parseInt(document.getElementById('gen-n').value) || 1,
+    aspect_ratio: document.getElementById('gen-aspect').value,
+    style: currentGenStyle || null,
+  };
+
+  if (currentProvider === 'aurora') {
+    body.resolution = document.getElementById('gen-resolution').value;
+  }
+  if (currentProvider === 'flux2pro') {
+    body.safety_tolerance = String(document.getElementById('gen-safety').value);
+  }
+
+  // Place shimmer placeholders
+  const grid = document.getElementById('gen-grid');
+  removeEmptyState('gen-grid');
+  const shimmers = [];
+  for (let i = 0; i < body.n; i++) {
+    const s = document.createElement('div');
+    s.className = 'shimmer';
+    grid.prepend(s);
+    shimmers.push(s);
+  }
+
+  try {
+    const endpoint = useVault && vaultDesc ? '/images/from-vault' : '/images/generate';
+    if (useVault && vaultDesc) body.description = vaultDesc;
+
+    const r = await fetch(`${API}${endpoint}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    const data = await r.json();
+    shimmers.forEach(s => s.remove());
+
+    if (!r.ok) throw new Error(data.detail || 'Generation failed');
+
+    (data.images || []).forEach(url => {
+      const card = makeImageCard(url,
+        `<button class="btn-ghost" onclick="sendToEdit('${url}')">→ Edit</button>`
+      );
+      grid.prepend(card);
+    });
+
+    setStatus('gen-status','success',`✦ ${data.images?.length || 0} image(s) generated using ${data.provider || currentProvider}`);
+  } catch (err) {
+    shimmers.forEach(s => s.remove());
+    setStatus('gen-status','error', err.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ── EDIT ──────────────────────────────────────────────────────────────────────
+function sendToEdit(url) {
+  // Switch to edit tab and pre-populate URL
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  document.querySelector('[data-tab="edit"]').classList.add('active');
+  document.getElementById('tab-edit').classList.add('active');
+
+  if (!editUrls.includes(url)) {
+    editUrls.push(url);
+    renderUrlPills();
+  }
+}
+
+async function runEdit() {
+  const prompt = document.getElementById('edit-prompt').value.trim();
+  if (!prompt) { setStatus('edit-status','error','Edit prompt is required'); return; }
+  if (!editUrls.length) { setStatus('edit-status','error','Add at least one source image URL'); return; }
+
+  const btn = document.getElementById('edit-btn');
+  btn.disabled = true;
+  setStatus('edit-status','loading','Applying edit…');
+
+  const body = {
+    prompt,
+    image_urls: editUrls,
+    n: parseInt(document.getElementById('edit-n').value) || 1,
+    aspect_ratio: document.getElementById('edit-aspect').value,
+    resolution: document.getElementById('edit-res').value,
+    style: currentEditStyle || null,
+  };
+
+  const grid = document.getElementById('edit-grid');
+  removeEmptyState('edit-grid');
+  const shimmers = [];
+  for (let i = 0; i < body.n; i++) {
+    const s = document.createElement('div'); s.className = 'shimmer';
+    grid.prepend(s); shimmers.push(s);
+  }
+
+  try {
+    const r = await fetch(`${API}/images/edit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await r.json();
+    shimmers.forEach(s => s.remove());
+
+    if (!r.ok) throw new Error(data.detail || 'Edit failed');
+
+    (data.images || []).forEach(url => {
+      const card = makeImageCard(url,
+        `<button class="btn-ghost" onclick="sendToUpscale('${url}')">→ Upscale</button>`
+      );
+      grid.prepend(card);
+    });
+
+    setStatus('edit-status','success',`◈ ${data.images?.length || 0} image(s) edited`);
+  } catch (err) {
+    shimmers.forEach(s => s.remove());
+    setStatus('edit-status','error', err.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ── UPSCALE ───────────────────────────────────────────────────────────────────
+function sendToUpscale(url) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  document.querySelector('[data-tab="upscale"]').classList.add('active');
+  document.getElementById('tab-upscale').classList.add('active');
+  document.getElementById('upscale-url').value = url;
+}
+
+async function runUpscale() {
+  const url = document.getElementById('upscale-url').value.trim();
+  if (!url) { setStatus('upscale-status','error','Image URL is required'); return; }
+
+  const btn = document.getElementById('upscale-btn');
+  btn.disabled = true;
+  setStatus('upscale-status','loading','Enhancing image via Clarity Upscaler…');
+
+  const body = {
+    image_url: url,
+    upscale_factor: parseFloat(document.getElementById('upscale-scale').value),
+    creativity: parseFloat(document.getElementById('upscale-creativity').value),
+    resemblance: parseFloat(document.getElementById('upscale-detail').value),
+    enable_safety_checker: document.getElementById('upscale-safety').checked,
+  };
+  const enhancePrompt = document.getElementById('upscale-prompt').value.trim();
+  if (enhancePrompt) body.prompt = enhancePrompt;
+
+  try {
+    const r = await fetch(`${API}/enhance/upscale`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await r.json();
+
+    if (!r.ok) throw new Error(data.detail || 'Upscale failed');
+
+    const resultUrl = data.image_url || data.url || data.images?.[0];
+    const resultEl = document.getElementById('upscale-result');
+    resultEl.innerHTML = `
+      <div class="comparison-grid">
+        <div class="comparison-panel">
+          <div class="comparison-label">⬡ Original</div>
+          <img src="${url}" onclick="openLightbox('${url}')" style="cursor:zoom-in" />
+        </div>
+        <div class="comparison-panel">
+          <div class="comparison-label">✦ Enhanced ${body.upscale_factor}×</div>
+          <img src="${resultUrl}" onclick="openLightbox('${resultUrl}')" style="cursor:zoom-in" />
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:14px">
+        <button class="btn-ghost" onclick="copyUrl('${resultUrl}')">Copy Result URL</button>
+        <button class="btn-ghost" onclick="window.open('${resultUrl}','_blank')">Open Full Size</button>
+        <button class="btn-ghost" onclick="sendToEdit('${resultUrl}')">→ Edit</button>
+      </div>`;
+
+    setStatus('upscale-status','success',`⬡ Upscaled ${body.upscale_factor}× successfully`);
+  } catch (err) {
+    setStatus('upscale-status','error', err.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ── VIDEO ─────────────────────────────────────────────────────────────────────
+async function runVideo() {
+  const prompt = document.getElementById('vid-prompt').value.trim();
+  if (!prompt) { setStatus('vid-status','error','Prompt is required'); return; }
+
+  const btn = document.getElementById('vid-btn');
+  btn.disabled = true;
+  setStatus('vid-status','loading','Submitting video generation request…');
+
+  const useVault = document.getElementById('vid-use-vault').checked;
+  const vaultDesc = document.getElementById('vid-vault-desc').value.trim();
+  const imgUrl = videoMode === 'image' ? document.getElementById('vid-image-url').value.trim() : null;
+
+  const body = {
+    prompt,
+    duration: parseInt(document.getElementById('vid-duration').value),
+    aspect_ratio: document.getElementById('vid-aspect').value,
+    resolution: document.getElementById('vid-res').value,
+  };
+  if (imgUrl) body.image_url = imgUrl;
+  if (useVault && vaultDesc) body.description = vaultDesc;
+
+  // Placeholder card
+  const grid = document.getElementById('vid-grid');
+  removeEmptyState('vid-grid');
+  const placeholder = document.createElement('div');
+  placeholder.className = 'video-card';
+  placeholder.innerHTML = `
+    <div style="aspect-ratio:16/9;background:var(--stone);display:flex;align-items:center;justify-content:center">
+      <div class="shimmer" style="width:100%;height:100%;aspect-ratio:auto;border-radius:0"></div>
+    </div>
+    <div class="video-status">
+      <div class="spinner"></div>
+      <span class="status-pending">Generating… this takes 1–3 minutes</span>
+    </div>`;
+  grid.prepend(placeholder);
+
+  try {
+    const endpoint = useVault && vaultDesc
+      ? '/videos/from-vault'
+      : '/videos/generate';
+
+    const r = await fetch(`${API}${endpoint}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await r.json();
+
+    if (!r.ok) throw new Error(data.detail || 'Video request failed');
+
+    // If we got a URL immediately, show it
+    if (data.video_url) {
+      renderVideoCard(placeholder, data.video_url, 'done', prompt);
+      setStatus('vid-status','success','▶ Video generation complete');
+      btn.disabled = false;
+      return;
+    }
+
+    // Otherwise poll
+    const reqId = data.request_id;
+    if (!reqId) throw new Error('No request_id returned');
+
+    setStatus('vid-status','loading',`Polling for completion (request: ${reqId.slice(0,8)}…)`);
+    pollVideo(reqId, placeholder, prompt, btn);
+
+  } catch (err) {
+    placeholder.remove();
+    setStatus('vid-status','error', err.message);
+    btn.disabled = false;
+  }
+}
+
+async function pollVideo(reqId, placeholder, prompt, btn) {
+  const MAX = 120; // 10 minutes
+  let attempts = 0;
+
+  const interval = setInterval(async () => {
+    attempts++;
+    if (attempts > MAX) {
+      clearInterval(interval);
+      placeholder.remove();
+      setStatus('vid-status','error','Timed out waiting for video');
+      btn.disabled = false;
+      return;
+    }
+
+    try {
+      const r = await fetch(`${API}/videos/status/${reqId}`);
+      const data = await r.json();
+      const status = data.status;
+
+      const statusEl = placeholder.querySelector('.video-status span');
+      if (status === 'done' || status === 'completed') {
+        clearInterval(interval);
+        renderVideoCard(placeholder, data.video_url, 'done', prompt);
+        setStatus('vid-status','success','▶ Video generation complete');
+        btn.disabled = false;
+      } else if (['expired','error','failed','cancelled'].includes(status)) {
+        clearInterval(interval);
+        placeholder.remove();
+        setStatus('vid-status','error',`Generation failed: ${status}`);
+        btn.disabled = false;
+      } else {
+        if (statusEl) {
+          statusEl.textContent = `Status: ${status} (${attempts * 5}s elapsed…)`;
+        }
+      }
+    } catch {
+      // ignore poll errors — keep trying
+    }
+  }, 5000);
+}
+
+function renderVideoCard(placeholder, videoUrl, status, prompt) {
+  placeholder.innerHTML = `
+    <video controls src="${videoUrl}"></video>
+    <div class="video-status">
+      <span class="status-done">✦ Complete</span>
+      <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;padding-left:10px">${prompt}</span>
+      <button class="btn-ghost" onclick="window.open('${videoUrl}','_blank')" style="flex-shrink:0">Download</button>
+    </div>`;
+}
+
+// ── DESCRIBE / VISION ────────────────────────────────────────────────────────
+let descProvider = 'claude';
+
+function selectDescProvider(p) {
+  descProvider = p;
+  document.getElementById('desc-pill-claude').classList.toggle('active', p === 'claude');
+  document.getElementById('desc-pill-grok').classList.toggle('active', p === 'grok');
+}
+
+function clearDescribe() {
+  document.getElementById('desc-result').innerHTML =
+    `<div class="empty-state"><div class="empty-state-sigil">👁</div><p>Awaiting an image URL</p></div>`;
+  clearStatus('desc-status');
+}
+
+async function runDescribe() {
+  const url = document.getElementById('desc-url').value.trim();
+  if (!url) { setStatus('desc-status', 'error', 'Image URL is required'); return; }
+
+  const btn = document.getElementById('desc-btn');
+  btn.disabled = true;
+  setStatus('desc-status', 'loading',
+    `Analysing with ${descProvider === 'claude' ? 'Claude' : 'Grok Vision'} — this may take 15–30 seconds…`);
+
+  try {
+    const r = await fetch(`${API}/vision/analyze`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image_url: url, provider: descProvider }),
+    });
+
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.detail || 'Analysis failed');
+
+    const resultEl = document.getElementById('desc-result');
+    resultEl.innerHTML = `
+      <img class="source-thumb" src="${url}" onclick="openLightbox('${url}')"
+           onerror="this.style.display='none'" loading="lazy" />
+
+      <div class="prompt-card">
+        <div class="prompt-card-header">
+          <div class="prompt-card-title">
+            ✦ Aurora / Grok Imagine Prompt
+          </div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span class="prompt-card-badge">${data.model_used}</span>
+            <button class="btn-ghost" style="padding:4px 10px;font-size:9px"
+              onclick="copyText('aurora-text')">Copy</button>
+          </div>
+        </div>
+        <div class="prompt-card-body" id="aurora-text">${escHtml(data.aurora_prompt)}</div>
+        <div class="prompt-card-footer">
+          <button class="btn-ghost" onclick="sendPromptToGenerate(document.getElementById('aurora-text').textContent, 'aurora')">
+            → Generate (Aurora)
+          </button>
+        </div>
+      </div>
+
+      <div class="prompt-card">
+        <div class="prompt-card-header">
+          <div class="prompt-card-title">
+            ⬡ Flux 2 Pro / SD3 Prompt
+          </div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span class="prompt-card-badge">optimised</span>
+            <button class="btn-ghost" style="padding:4px 10px;font-size:9px"
+              onclick="copyText('flux-text')">Copy</button>
+          </div>
+        </div>
+        <div class="prompt-card-body" id="flux-text">${escHtml(data.flux_prompt)}</div>
+        <div class="prompt-card-footer">
+          <button class="btn-ghost" onclick="sendPromptToGenerate(document.getElementById('flux-text').textContent, 'flux2pro')">
+            → Generate (Flux 2 Pro)
+          </button>
+        </div>
+      </div>`;
+
+    setStatus('desc-status', 'success',
+      `👁 Analysis complete using ${data.model_used}`);
+
+  } catch (err) {
+    setStatus('desc-status', 'error', err.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function escHtml(str) {
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function copyText(elemId) {
+  const text = document.getElementById(elemId).textContent;
+  navigator.clipboard.writeText(text).then(() => showToast('Prompt copied to clipboard'));
+}
+
+function sendPromptToGenerate(promptText, provider) {
+  // Switch to Generate tab and pre-fill
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  document.querySelector('[data-tab="generate"]').classList.add('active');
+  document.getElementById('tab-generate').classList.add('active');
+
+  document.getElementById('gen-prompt').value = promptText;
+  if (provider === 'flux2pro') selectProvider('flux2pro');
+  else selectProvider('aurora');
+
+  showToast('Prompt loaded into Generate tab');
+}
+
+
+// ── NSFW CHECK ────────────────────────────────────────────────────────────────
+function clearNsfw() {
+  document.getElementById('nsfw-result').innerHTML =
+    `<div class="empty-state"><div class="empty-state-sigil">🛡</div><p>Paste image URLs to classify</p></div>`;
+  clearStatus('nsfw-status');
+}
+
+async function runNsfw() {
+  const raw = document.getElementById('nsfw-urls').value.trim();
+  if (!raw) { setStatus('nsfw-status','error','Paste at least one image URL'); return; }
+
+  const urls = raw.split('\n').map(u => u.trim()).filter(Boolean).slice(0, 10);
+  if (urls.length === 0) { setStatus('nsfw-status','error','No valid URLs found'); return; }
+
+  const btn = document.getElementById('nsfw-btn');
+  btn.disabled = true;
+  setStatus('nsfw-status','loading',`Checking ${urls.length} image${urls.length>1?'s':''}…`);
+
+  try {
+    const r = await fetch(`${API}/images/check-nsfw`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image_urls: urls }),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.detail || 'NSFW check failed');
+
+    const resultEl = document.getElementById('nsfw-result');
+    const nsfwCount = data.nsfw_count;
+    const sfwCount  = data.sfw_count;
+
+    let summaryColor = nsfwCount === 0 ? '#86efac' : '#fca5a5';
+    let summaryText  = nsfwCount === 0
+      ? `✓ All ${data.total_checked} images are SFW`
+      : `⚠ ${nsfwCount} NSFW · ${sfwCount} SFW out of ${data.total_checked} images`;
+
+    let cardsHtml = '<div class="nsfw-grid">';
+    for (const result of data.results) {
+      const cls   = result.is_nsfw ? 'nsfw' : 'sfw';
+      const label = result.is_nsfw ? '⚠ NSFW' : '✓ SFW';
+      cardsHtml += `
+        <div class="nsfw-card ${cls}">
+          <img src="${result.image_url}" onerror="this.style.display='none'" loading="lazy"
+               onclick="openLightbox('${result.image_url}')" style="cursor:zoom-in" />
+          <div class="nsfw-badge ${cls}">${label}</div>
+        </div>`;
+    }
+    cardsHtml += '</div>';
+
+    resultEl.innerHTML = `
+      <div class="nsfw-summary" style="color:${summaryColor};margin-bottom:12px">${summaryText}</div>
+      ${cardsHtml}`;
+
+    setStatus('nsfw-status', nsfwCount === 0 ? 'success' : 'error', summaryText);
+  } catch (err) {
+    setStatus('nsfw-status','error', err.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ── VAULT CHAT ────────────────────────────────────────────────────────────────
+let chatProvider = 'claude';
+let currentSessionId = null;
+
+function selectChatProvider(p) {
+  chatProvider = p;
+  document.getElementById('chat-pill-claude').classList.toggle('active', p === 'claude');
+  document.getElementById('chat-pill-grok').classList.toggle('active', p === 'grok');
+}
+
+function clearChat() {
+  currentSessionId = null;
+  document.getElementById('chat-result').innerHTML =
+    `<div class="empty-state"><div class="empty-state-sigil">🗝</div><p>Agent responses will appear here for review</p></div>`;
+  clearStatus('chat-status');
+}
+
+async function runChat() {
+  const prompt = document.getElementById('chat-prompt').value.trim();
+  if (!prompt) { setStatus('chat-status','error','Prompt is required'); return; }
+
+  const btn = document.getElementById('chat-btn');
+  btn.disabled = true;
+  setStatus('chat-status','loading','Agent is searching vault and planning changes…');
+
+  try {
+    const r = await fetch(`${API}/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        prompt,
+        provider: chatProvider,
+        top_k: parseInt(document.getElementById('chat-topk').value),
+      }),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.detail || 'Chat failed');
+
+    currentSessionId = data.session_id;
+    renderStagedChanges(data);
+    setStatus('chat-status','success',`Agent proposed ${data.changes.length} change${data.changes.length!==1?'s':''} · Review below`);
+  } catch (err) {
+    setStatus('chat-status','error', err.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function renderStagedChanges(data) {
+  const resultEl = document.getElementById('chat-result');
+  const opColors = { create: 'op-create', update: 'op-update', append: 'op-append', delete: 'op-delete' };
+
+  let changesHtml = '';
+  for (const ch of data.changes) {
+    const opClass = opColors[ch.operation] || 'op-update';
+    const preview = (ch.proposed_content || '').slice(0, 600);
+    changesHtml += `
+      <div class="staged-change-card">
+        <div class="staged-change-header">
+          <span class="staged-op-badge ${opClass}">${ch.operation}</span>
+          <span class="staged-path">${ch.relative_path}</span>
+        </div>
+        <div class="staged-change-body">${escHtml(preview)}${preview.length >= 600 ? '\n…' : ''}</div>
+      </div>`;
+  }
+  if (data.changes.length === 0) {
+    changesHtml = '<p style="color:var(--text-dim);font-size:14px">No file changes proposed.</p>';
+  }
+
+  resultEl.innerHTML = `
+    <div class="agent-response">
+      <div class="agent-response-label">✦ Agent Response</div>
+      ${escHtml(data.agent_response)}
+    </div>
+    <div style="font-family:\'Cinzel\',serif;font-size:10px;letter-spacing:.12em;color:var(--text-dim);margin-bottom:12px">
+      PROPOSED CHANGES — ${data.changes.length} file${data.changes.length!==1?'s':''}
+    </div>
+    ${changesHtml}
+    <div class="review-actions">
+      <button class="btn-confirm" onclick="confirmChanges()">✓ Commit to Vault</button>
+      <button class="btn-discard" onclick="discardChanges()">✗ Discard</button>
+    </div>
+    <div class="modify-section">
+      <label>Request Changes</label>
+      <textarea id="modify-feedback" rows="3" placeholder="e.g. Make Varek more menacing, add a secret motive…"></textarea>
+      <button class="btn-primary" onclick="modifyChanges()">↺ &nbsp; Revise</button>
+    </div>`;
+}
+
+async function confirmChanges() {
+  if (!currentSessionId) return;
+  setStatus('chat-status','loading','Writing changes to vault…');
+  try {
+    const r = await fetch(`${API}/review/${currentSessionId}/confirm`, { method: 'POST' });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.detail || 'Confirm failed');
+    setStatus('chat-status','success',`✓ Committed ${data.files_committed.length} file${data.files_committed.length!==1?'s':''} to vault`);
+    document.querySelector('.review-actions').innerHTML =
+      `<p style="color:#86efac;font-family:'Cinzel',serif;font-size:11px;letter-spacing:.1em">
+        ✓ ${data.message}
+      </p>`;
+    currentSessionId = null;
+  } catch(err) {
+    setStatus('chat-status','error', err.message);
+  }
+}
+
+async function discardChanges() {
+  if (!currentSessionId) return;
+  setStatus('chat-status','loading','Discarding staged changes…');
+  try {
+    const r = await fetch(`${API}/review/${currentSessionId}`, { method: 'DELETE' });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.detail || 'Discard failed');
+    setStatus('chat-status','success','Changes discarded');
+    clearChat();
+  } catch(err) {
+    setStatus('chat-status','error', err.message);
+  }
+}
+
+async function modifyChanges() {
+  if (!currentSessionId) { setStatus('chat-status','error','No active session'); return; }
+  const feedback = document.getElementById('modify-feedback').value.trim();
+  if (!feedback) { setStatus('chat-status','error','Enter revision feedback first'); return; }
+
+  setStatus('chat-status','loading','Agent is revising…');
+  document.getElementById('modify-feedback').value = '';
+  try {
+    const r = await fetch(`${API}/review/${currentSessionId}/modify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ feedback, provider: chatProvider }),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.detail || 'Modify failed');
+    renderStagedChanges(data);
+    setStatus('chat-status','success',`Agent revised — ${data.changes.length} change${data.changes.length!==1?'s':''}. Review below.`);
+  } catch(err) {
+    setStatus('chat-status','error', err.message);
+  }
+}
+
+// ── VAULT MANAGER ─────────────────────────────────────────────────────────────
+async function loadVaultStatus() {
+  const bodyEl = document.getElementById('vault-status-body');
+  bodyEl.textContent = 'Loading…';
+  try {
+    const r = await fetch(`${API}/status`);
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || 'Status failed');
+    bodyEl.innerHTML = `
+      <span style="color:var(--text-dim)">Path</span>  &nbsp;${d.vault_path}<br>
+      <span style="color:var(--text-dim)">Files</span> &nbsp;${d.indexed_files} indexed / ${d.total_files} total<br>
+      <span style="color:var(--text-dim)">Watch</span> &nbsp;${d.watching ? '<span style="color:#86efac">● Live</span>' : '<span style="color:#6b7280">○ Off</span>'}<br>
+      <span style="color:var(--text-dim)">Last</span>  &nbsp;${d.last_indexed || '—'}`;
+  } catch(err) {
+    bodyEl.textContent = '⚠ ' + err.message;
+  }
+}
+
+async function runReindex() {
+  const btn = document.getElementById('reindex-btn');
+  btn.disabled = true;
+  setStatus('vault-status','loading','Re-indexing vault files…');
+  try {
+    const r = await fetch(`${API}/reindex`, { method: 'POST' });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || 'Reindex failed');
+    setStatus('vault-status','success', d.message || 'Re-index started');
+    setTimeout(loadVaultStatus, 2000);
+  } catch(err) {
+    setStatus('vault-status','error', err.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function runVaultSearch() {
+  const query = document.getElementById('vault-search-query').value.trim();
+  setStatus('vault-status','loading', query ? `Searching for "${query}"…` : 'Listing all files…');
+  try {
+    const url = query ? `${API}/files?query=${encodeURIComponent(query)}` : `${API}/files`;
+    const r = await fetch(url);
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || 'Search failed');
+    renderVaultFiles(d.files, query);
+    setStatus('vault-status','success', `${d.files.length} file${d.files.length!==1?'s':''} found`);
+  } catch(err) {
+    setStatus('vault-status','error', err.message);
+  }
+}
+
+async function loadAllFiles() {
+  document.getElementById('vault-search-query').value = '';
+  runVaultSearch();
+}
+
+function renderVaultFiles(files, query) {
+  const resultEl = document.getElementById('vault-result');
+  if (!files || files.length === 0) {
+    resultEl.innerHTML = `<div class="empty-state"><div class="empty-state-sigil">📚</div><p>No files found${query ? ' for "'+query+'"' : ''}</p></div>`;
+    return;
+  }
+  let html = '<div class="vault-file-list">';
+  for (const f of files) {
+    const scoreHtml = f.score > 0 ? `<span class="vault-file-score">${(f.score*100).toFixed(0)}%</span>` : '';
+    html += `
+      <div class="vault-file-row">
+        <span class="vault-file-name" title="${f.path}">📄 ${f.path}</span>
+        ${scoreHtml}
+      </div>`;
+  }
+  html += '</div>';
+  resultEl.innerHTML = html;
+}
+
+// Auto-load vault status when switching to vault tab
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  if (btn.dataset.tab === 'vault') {
+    const orig = btn.onclick;
+    btn.addEventListener('click', () => { loadVaultStatus(); });
+  }
+});
+// Also load on first page paint if vault is somehow active
+
+</script>
+</body>
+</html>

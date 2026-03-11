@@ -1,8 +1,8 @@
 [project]
 name = "rpg-vault-agent"
-version = "0.3.0"
+version = "1.0.0"
 description = "Claude/Grok-powered backend for managing an Obsidian RPG campaign vault"
-requires-python = ">=3.14"
+requires-python = ">=3.11"
 dependencies = [
     "anthropic>=0.40.0",
     "openai>=1.50.0",
@@ -15,7 +15,7 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "pydantic>=2.0.0",
     "requests>=2.31.0",
-    "fal-client>=0.13.1",
+    "fal-client>=0.5.0",
 ]
 
 # Build system is required so `uv sync` installs the project itself as an
@@ -30,10 +30,21 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["providers"]
 
-# dev dependencies — PEP 735 syntax (replaces deprecated [tool.uv.dev-dependencies])
 [dependency-groups]
 dev = [
     "httpx>=0.27.0",
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
 ]
+
+# Force uv to always fetch torch from the CPU-only index.
+# This prevents it from downloading the 2.5GB CUDA build when running
+# inside Docker where GPU support is not needed.
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+torchvision = { index = "pytorch-cpu" }

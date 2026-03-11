@@ -601,3 +601,42 @@ class NsfwCheckResponse(BaseModel):
     total_checked: int
     nsfw_count: int    # how many images were flagged
     sfw_count: int     # how many images were clean
+
+
+# ---------------------------------------------------------------------------
+# Vision / image analysis
+# ---------------------------------------------------------------------------
+
+class VisionAnalyzeRequest(BaseModel):
+    image_url: str
+    """Publicly accessible URL of the image to analyse."""
+
+    provider: str = "claude"
+    """
+    Which LLM to use for vision analysis.
+      "claude"  — claude-opus-4-5   (Anthropic)
+      "grok"    — grok-2-vision     (xAI)
+    """
+
+    model: Optional[str] = None
+    """
+    Override the default vision model for the chosen provider.
+    Leave None to use the recommended default.
+    """
+
+    @field_validator("provider")
+    @classmethod
+    def validate_provider(cls, v: str) -> str:
+        if v not in {"claude", "grok"}:
+            raise ValueError("provider must be 'claude' or 'grok'")
+        return v
+
+
+class VisionAnalyzeResponse(BaseModel):
+    provider: str
+    model_used: str
+    image_url: str
+    aurora_prompt: str
+    """Natural-language description optimised for Grok Imagine / Aurora."""
+    flux_prompt: str
+    """Dense tag-style prompt optimised for Flux 2 Pro / Stable Diffusion 3."""

@@ -30,12 +30,14 @@ from datetime import datetime, timezone
 
 from dotenv import load_dotenv
 from fastapi import BackgroundTasks, FastAPI, HTTPException
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from agent import RPGAgent
 from embeddings import VaultIndex
 from fal_tools import clarity_upscale, flux2_pro_generate, nsfw_check
 from image_gen import build_vault_prompt, edit_images, generate_images
+from vision import analyze_image_claude, analyze_image_grok
 from video_gen import (
     build_vault_video_prompt,
     edit_video,
@@ -67,6 +69,8 @@ from models import (
     ClarityUpscaleResponse,
     NsfwCheckRequest,
     NsfwCheckResponse,
+    VisionAnalyzeRequest,
+    VisionAnalyzeResponse,
     NsfwCheckResult,
 )
 from providers import ProviderName, create_provider
@@ -391,6 +395,33 @@ async def discard(session_id: str):
         session_id=session_id,
         message="Staged changes discarded. Nothing was written to the vault.",
     )
+
+
+# ---------------------------------------------------------------------------
+# GET /health  — lightweight ping for the studio UI health check
+# ---------------------------------------------------------------------------
+
+@app.get("/health", summary="Health check")
+async def health():
+    """Returns 200 OK so the studio UI can confirm the API is reachable."""
+    return {
+        "status": "ok",
+        "service": "rpg-vault-agent",
+        "vault_path": str(_vault.vault_path) if _vault else None,
+        "xai_key_set": bool(os.getenv("XAI_API_KEY")),
+        "anthropic_key_set": bool(os.getenv("ANTHROPIC_API_KEY")),
+        "fal_key_set": bool(os.getenv("FAL_KEY")),
+    }
+
+
+@app.get("/studio", summary="Open the RPG Media Studio UI", include_in_schema=False)
+async def studio():
+    """Serves studio.html from the same directory as main.py."""
+    import pathlib
+    html_path = pathlib.Path(__file__).parent / "studio.html"
+    if not html_path.exists():
+        return HTMLResponse("<h2>studio.html not found — place it in the same folder as main.py</h2>", status_code=404)
+    return FileResponse(html_path, media_type="text/html")
 
 
 # ---------------------------------------------------------------------------
@@ -1254,4 +1285,95 @@ async def images_check_nsfw(request: NsfwCheckRequest):
         raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
         logger.exception("NSFW check failed")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ===========================================================================
+# Vision — image analysis & prompt generation
+# ===========================================================================
+
+@app.post(
+    "/vision/analyze",
+    response_model=VisionAnalyzeResponse,
+    summary="Analyse an image and generate reproduction prompts",
+)
+async def vision_analyze(request: VisionAnalyzeRequest):
+    """
+    Send an image URL to Claude or Grok vision and receive two generation-ready
+    prompt descriptions of the main person in the image:
+
+    - **aurora_prompt** — natural-language description phrased for Grok Imagine / Aurora
+    - **flux_prompt**   — dense tag-style prompt optimised for Flux 2 Pro / SD3
+
+    **Provider options:**
+    - `"claude"` — Uses `claude-opus-4-5` (requires `ANTHROPIC_API_KEY`)
+    - `"grok"`   — Uses `grok-2-vision`   (requires `XAI_API_KEY`)
+
+    The image URL must be publicly accessible. Both providers fetch it directly —
+    no server-side download is performed.
+
+    **Example request:**
+    ```json
+    {
+      "image_url": "https://example.com/character.jpg",
+      "provider": "claude"
+    }
+    ```
+
+    **Example response:**
+    ```json
+    {
+      "provider": "claude",
+      "model_used": "claude-opus-4-5",
+      "image_url": "https://example.com/character.jpg",
+      "aurora_prompt": "A young woman with long auburn hair falling in loose waves past her shoulders...",
+      "flux_prompt": "young woman, long auburn wavy hair, green eyes, fair skin with freckles, slim build..."
+    }
+    ```
+    """
+    from vision import CLAUDE_VISION_MODEL, GROK_VISION_MODEL
+
+    provider = request.provider.lower()
+
+    # Validate keys up front with a clear message
+    if provider == "claude" and not os.getenv("ANTHROPIC_API_KEY"):
+        raise HTTPException(status_code=400, detail="ANTHROPIC_API_KEY is not set.")
+    if provider == "grok" and not os.getenv("XAI_API_KEY"):
+        raise HTTPException(status_code=400, detail="XAI_API_KEY is not set.")
+
+    model_used = request.model or (
+        CLAUDE_VISION_MODEL if provider == "claude" else GROK_VISION_MODEL
+    )
+
+    try:
+        if provider == "claude":
+            aurora, flux = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: analyze_image_claude(
+                    image_url=request.image_url,
+                    model=model_used,
+                ),
+            )
+        else:
+            aurora, flux = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: analyze_image_grok(
+                    image_url=request.image_url,
+                    model=model_used,
+                ),
+            )
+
+        return VisionAnalyzeResponse(
+            provider=provider,
+            model_used=model_used,
+            image_url=request.image_url,
+            aurora_prompt=aurora,
+            flux_prompt=flux,
+        )
+
+    except RuntimeError as e:
+        logger.error(f"Vision analyze failed ({provider}): {e}")
+        raise HTTPException(status_code=502, detail=str(e))
+    except Exception as e:
+        logger.exception("Vision analyze failed")
         raise HTTPException(status_code=500, detail=str(e))
